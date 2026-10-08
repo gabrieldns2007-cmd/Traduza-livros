@@ -41,8 +41,8 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
   // acompanha o progresso enquanto a tradução está em andamento
   useEffect(() => {
     if (!active) return;
-    const t = setInterval(refresh, 1500);
-    const g = setInterval(refreshGlossary, 6000);
+    const t = setInterval(refresh, 3000);
+    const g = setInterval(refreshGlossary, 12000);
     const onVisible = () => document.visibilityState === "visible" && refresh();
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -57,8 +57,8 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
     if (book.status === "done") void refreshGlossary();
   }, [book.status, refreshGlossary]);
 
-  const act = async (action: "pause" | "resume" | "retry-failed") => {
-    const { book: b } = await api<{ book: BookView }>(`/api/books/${book.id}/translate`, { method: "POST", json: { action } });
+  const act = async (action: "pause" | "resume" | "retry-failed", extra?: { providerId?: string; confirmCost?: boolean }) => {
+    const { book: b } = await api<{ book: BookView }>(`/api/books/${book.id}/translate`, { method: "POST", json: { action, ...extra } });
     setBook(b);
   };
 

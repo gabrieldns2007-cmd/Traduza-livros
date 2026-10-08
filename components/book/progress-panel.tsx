@@ -5,6 +5,7 @@ import type { BookView } from "@/lib/api";
 import { chapterLabel, formatDuration, formatNumber } from "@/lib/format";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
+import { ProviderPicker, type ProviderChoice } from "./provider-picker";
 
 function headline(book: BookView): { title: string; sub?: string; detail?: string } {
   const activeIdx = book.chapters.map((c, i) => (book.activeChapterIds.includes(c.id) ? i : -1)).filter((i) => i >= 0);
@@ -30,6 +31,8 @@ function headline(book: BookView): { title: string; sub?: string; detail?: strin
       return { title, detail };
     }
     case "paused":
+      if (book.stopCode === "quota")
+        return { title: "Limite gratuito atingido.", sub: "A tradução pode ser continuada quando a cota estiver disponível." };
       return book.stopCode === "credits"
         ? { title: "Tradução pausada: sem créditos.", sub: book.error }
         : { title: "Tradução pausada.", sub: book.error ?? "Continue quando quiser, de onde parou." };
@@ -40,16 +43,39 @@ function headline(book: BookView): { title: string; sub?: string; detail?: strin
   }
 }
 
-export function ProgressPanel({ book, onAction }: { book: BookView; onAction: (a: "pause" | "resume") => Promise<void> }) {
+const STATUS_TEXT: Record<string, string> = {
+  queued: "Na fila",
+  analyzing: "Preparando",
+  translating: "Traduzindo",
+  paused: "Pausado",
+  done: "Concluído",
+  error: "Erro",
+  ready: "Não iniciado",
+};
+
+const PROVIDER_LABEL: Record<string, string> = { gemini: "Gemini Free", anthropic: "Anthropic", openai: "OpenAI", demo: "Demonstração" };
+
+export function ProgressPanel({
+  book,
+  onAction,
+}: {
+  book: BookView;
+  onAction: (a: "pause" | "resume", extra?: { providerId?: string; confirmCost?: boolean }) => Promise<void>;
+}) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [choice, setChoice] = useState<ProviderChoice | null>(null);
   const h = headline(book);
   const doneChapters = book.chapters.filter((c) => c.status === "done").length;
   const running = book.status === "queued" || book.status === "analyzing" || book.status === "translating";
 
   const run = async (a: "pause" | "resume") => {
     setBusy(true);
+    setError("");
     try {
-      await onAction(a);
+      await onAction(a, a === "resume" && choice ? { providerId: choice.providerId, confirmCost: choice.confirmCost } : undefined);
+    } catch (err) {
+      setError((err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -75,6 +101,29 @@ export function ProgressPanel({ book, onAction }: { book: BookView; onAction: (a
 
       <ProgressBar value={book.percent} active={running} className="mt-6" />
 
+      <dl className="mt-6 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+        <div>
+          <dt className="label">Provedor</dt>
+          <dd className="mt-0.5 text-[0.9375rem] text-ink">{book.provider ? (PROVIDER_LABEL[book.provider.id] ?? book.provider.id) : "—"}</dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="label">Modelo</dt>
+          <dd className="mt-0.5 truncate text-[0.9375rem] text-ink">{book.provider?.model ?? "—"}</dd>
+        </div>
+        <div>
+          <dt className="label">Progresso</dt>
+          <dd className="num mt-0.5 text-[0.9375rem] text-ink">
+            {doneChapters} / {book.chapters.length} capítulos
+          </dd>
+        </div>
+        <div>
+          <dt className="label">Status</dt>
+          <dd className={`mt-0.5 text-[0.9375rem] ${book.status === "error" ? "text-accent" : "text-ink"}`}>
+            {STATUS_TEXT[book.status] ?? book.status}
+          </dd>
+        </div>
+      </dl>
+
       <dl className="mt-6 grid grid-cols-3 gap-4 border-b border-rule pb-7">
         <div>
           <dt className="label">Palavras</dt>
@@ -93,14 +142,20 @@ export function ProgressPanel({ book, onAction }: { book: BookView; onAction: (a
         </div>
       </dl>
 
+      {!running && (
+        <div className="mt-7">
+          <ProviderPicker bookId={book.id} preferred={book.provider?.id} onChange={setChoice} />
+        </div>
+      )}
+
       <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
         {running ? (
           <Button variant="secondary" onClick={() => run("pause")} disabled={busy} className="h-10 px-5 text-[0.875rem]">
             Pausar
           </Button>
         ) : (
-          <Button onClick={() => run("resume")} disabled={busy}>
-            Continuar tradução
+          <Button onClick={() => run("resume")} disabled={busy || !choice?.ready}>
+            {busy ? "Continuando…" : "Continuar tradução"}
           </Button>
         )}
         {!running && book.resumeIndex >= 0 && (
@@ -111,6 +166,11 @@ export function ProgressPanel({ book, onAction }: { book: BookView; onAction: (a
         )}
         {running && <p className="text-[0.8125rem] text-muted">Pode fechar esta página — a tradução continua no servidor.</p>}
       </div>
+      {error && (
+        <p className="mt-3 text-[0.875rem] text-accent" role="alert">
+          {error}
+        </p>
+      )}
 
       {book.isDemo && (
         <p className="mt-6 rounded-xl bg-paper-2 px-4 py-3 text-[0.8125rem] leading-relaxed text-ink-2">

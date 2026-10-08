@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
-    "status": "node scripts/book-status.mjs"
+    "status": "node scripts/book-status.mjs",
+    "app": "next build && next start -H 0.0.0.0"
   },
   "engines": {
     "node": ">=20.9"

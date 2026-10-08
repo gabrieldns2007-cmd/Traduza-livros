@@ -4,7 +4,7 @@ import { fixtureEpub } from "./helpers";
 import { importBook } from "@/services/parsing/import-book";
 import { store } from "@/lib/storage";
 import { tokenize, toPlainText } from "@/lib/markup";
-import { processChapter } from "@/services/processing/chapter-processor";
+import { processChapters } from "@/services/processing/chapter-processor";
 import { jobRunner } from "@/services/processing/job-runner";
 import { buildTranslatedEpub } from "@/services/export/epub-export";
 import { buildTranslatedPdf } from "@/services/export/pdf-export";
@@ -14,6 +14,8 @@ import type { BatchInput, BatchOutput, TranslationProvider } from "@/services/tr
 class FlakyProvider implements TranslationProvider {
   id = "fake";
   model = "fake";
+  paid = false;
+  limits = { batchChars: 5000, concurrency: 1 };
   calls = 0;
   strictCalls = 0;
   seenGlossary = new Set<string>();
@@ -75,16 +77,20 @@ describe("pipeline", () => {
 
   it("traduz um capítulo com novas tentativas e glossário", async () => {
     const provider = new FlakyProvider();
-    const meta = (await store.get(bookId))!;
+    // “leitura atenta” ligada neste teste: cobre também a análise por capítulo
+    const meta = await store.update(bookId, (m) => {
+      m.options.deepContext = true;
+    });
     await store.updateGlossary(bookId, (e) =>
       e.push({ id: "g1", term: "Captain Reyes", translation: "Capitão Reyes", type: "character", origin: "auto" }),
     );
     let words = 0;
-    await processChapter(meta, meta.chapters[0], provider, {
+    await processChapters(meta, [meta.chapters[0]], provider, {
       signal: new AbortController().signal,
-      analysisLock: (fn) => fn(),
+      onChapterSaved: async () => {},
+      analysisLock: <T>(fn: () => Promise<T>) => fn(),
       onUsage: async () => {},
-      onProgress: async (_c, d) => {
+      onProgress: async (_c: string, d: { words: number }) => {
         words += d.words;
       },
     });

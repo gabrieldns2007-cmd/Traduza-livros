@@ -58,6 +58,9 @@ export interface ChapterMeta {
   status: ChapterStatus;
   /** resumo curto do capítulo (contexto para os capítulos seguintes) */
   summary?: string;
+  /** provedor e modelo que traduziram o capítulo */
+  provider?: string;
+  model?: string;
 }
 
 export type GlossaryType = "character" | "place" | "organization" | "term" | "other";

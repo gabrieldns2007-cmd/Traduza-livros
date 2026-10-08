@@ -101,7 +101,11 @@ ${extra ? `\nInstructions from the reader (follow them):\n${extra}\n` : ""}
 Output format
 - The input is a list of <seg id="N">…</seg> elements. Return every one of them, in the same order, as <seg id="N">translation</seg> — exactly one output segment per input segment, never merged, split or skipped. Output nothing before, between or after the segments.
 - Segments may contain inline tags such as <em_3>…</em_3>, <strong_4>…</strong_4>, <a_7>…</a_7> or empty tags like <br_5/>. Keep every tag, with the same name and number, around the corresponding translated words, properly nested. Do not add, drop or rename tags.
-- Everything inside <context> is reference material for consistency — never translate it or repeat it.`;
+- Everything inside <context> is reference material for consistency — never translate it or repeat it.
+- After the last segment, if the text introduces proper names or recurring special terms (characters, places, organizations, invented words) that are NOT already in the glossary, list them once in this block, one per line, at most 15 lines; omit the block when there are none:
+<new_terms>
+Original term => translation | character|place|organization|term|other
+</new_terms>`;
 }
 
 export function formatGlossary(entries: GlossaryEntry[]): string {
@@ -143,6 +147,24 @@ export function parseSegments(text: string): Map<number, string> {
     if (!out.has(id)) out.set(id, m[2].trim());
   }
   return out;
+}
+
+/** Lê o bloco <new_terms> que o modelo acrescenta depois dos segmentos. */
+export function parseNewTerms(text: string): { term: string; translation: string; type: GlossaryEntry["type"] }[] {
+  const block = /<new_terms>([\s\S]*?)<\/new_terms>/.exec(text)?.[1];
+  if (!block) return [];
+  const types = new Set(["character", "place", "organization", "term", "other"]);
+  const out: { term: string; translation: string; type: GlossaryEntry["type"] }[] = [];
+  for (const line of block.split("\n")) {
+    const m = /^\s*[-*]?\s*(.+?)\s*=>\s*(.+?)\s*(?:\|\s*([a-z]+))?\s*$/i.exec(line);
+    if (!m) continue;
+    const term = m[1].trim();
+    const translation = m[2].trim();
+    if (!term || !translation || term.length > 80 || translation.length > 120) continue;
+    const t = (m[3] ?? "other").toLowerCase();
+    out.push({ term, translation, type: (types.has(t) ? t : "other") as GlossaryEntry["type"] });
+  }
+  return out.slice(0, 20);
 }
 
 export function analysisSystemPrompt(): string {

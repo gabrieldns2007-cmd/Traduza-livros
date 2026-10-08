@@ -9,6 +9,7 @@ import type {
   ChapterAnalysis,
   ChapterAnalysisInput,
   GlossaryCandidate,
+  ProviderLimits,
   TranslationProvider,
 } from "./translation-provider";
 import {
@@ -18,6 +19,7 @@ import {
   bookAnalysisPrompt,
   chapterAnalysisPrompt,
   parseJsonLoose,
+  parseNewTerms,
   parseSegments,
   translationSystemPrompt,
   translationUserPrompt,
@@ -39,7 +41,16 @@ function cleanTerms(raw: unknown): GlossaryCandidate[] {
 }
 
 export class LLMTranslationProvider implements TranslationProvider {
-  constructor(private readonly llm: LLMClient) {}
+  readonly paid: boolean;
+  readonly limits: ProviderLimits;
+
+  constructor(
+    private readonly llm: LLMClient,
+    opts: { paid: boolean; limits: ProviderLimits },
+  ) {
+    this.paid = opts.paid;
+    this.limits = opts.limits;
+  }
 
   get id() {
     return this.llm.providerId;
@@ -107,6 +118,7 @@ export class LLMTranslationProvider implements TranslationProvider {
     });
     return {
       translations: parseSegments(res.text),
+      newTerms: parseNewTerms(res.text),
       truncated: res.stopReason === "max_tokens",
       refused: res.stopReason === "refusal",
       usage: res.usage,

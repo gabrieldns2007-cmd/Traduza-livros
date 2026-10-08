@@ -11,6 +11,7 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { ArrowRight, Chevron } from "@/components/ui/icons";
+import { ProviderPicker, type ProviderChoice } from "@/components/book/provider-picker";
 
 type Phase =
   | { kind: "idle" }
@@ -65,6 +66,7 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
   const [deepContext, setDeepContext] = useState(defaults.deepContext);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState("");
+  const [choice, setChoice] = useState<ProviderChoice | null>(null);
 
   const pick = useCallback(
     async (file: File | undefined) => {
@@ -105,7 +107,14 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
     try {
       await api(`/api/books/${phase.book.id}/translate`, {
         method: "POST",
-        json: { action: "start", targetLanguage: target, sourceLanguage: source, options: { instructions, dialogueStyle, deepContext } },
+        json: {
+          action: "start",
+          targetLanguage: target,
+          sourceLanguage: source,
+          options: { instructions, dialogueStyle, deepContext },
+          providerId: choice?.providerId,
+          confirmCost: choice?.confirmCost,
+        },
       });
       router.push(`/livros/${phase.book.id}`);
     } catch (err) {
@@ -284,8 +293,12 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
             )}
           </div>
 
+          <div className="mt-8">
+            <ProviderPicker bookId={phase.book.id} onChange={setChoice} />
+          </div>
+
           <div className="mt-6 flex flex-col items-stretch gap-4 sm:flex-row sm:items-center">
-            <Button onClick={start} disabled={starting} className="w-full sm:w-auto">
+            <Button onClick={start} disabled={starting || !choice?.ready} className="w-full sm:w-auto">
               {starting ? "Começando…" : "Começar tradução"}
               {!starting && <ArrowRight />}
             </Button>

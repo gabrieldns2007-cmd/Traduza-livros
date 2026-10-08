@@ -15,6 +15,8 @@ export interface LLMRequest {
   json?: { name: string; schema: Record<string, unknown> };
   effort?: Effort;
   signal?: AbortSignal;
+  /** avisado quando o provedor pede para esperar (limite por minuto) */
+  onWait?: (ms: number) => void;
 }
 
 export interface LLMResponse {
@@ -33,7 +35,7 @@ export interface LLMClient {
  * Erro do provedor. `fatal` = não adianta tentar de novo (chave inválida,
  * modelo inexistente, sem créditos). A mensagem é mostrada ao usuário.
  */
-export type ProviderErrorCode = "credits" | "auth" | "model" | "rate_limit" | "bad_request" | "network" | "server" | "other";
+export type ProviderErrorCode = "quota" | "credits" | "auth" | "model" | "rate_limit" | "bad_request" | "network" | "server" | "other";
 
 export class ProviderError extends Error {
   readonly fatal: boolean;

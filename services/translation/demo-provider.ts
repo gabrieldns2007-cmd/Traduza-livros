@@ -9,6 +9,8 @@ import { sleep } from "@/utils/async";
 
 export class DemoTranslationProvider implements TranslationProvider {
   readonly id = "demo";
+  readonly paid = false;
+  readonly limits = { batchChars: 8000, concurrency: 2 };
   readonly model = "demo";
 
   constructor(private readonly delayMs = Number(process.env.DEMO_DELAY_MS ?? 350)) {}

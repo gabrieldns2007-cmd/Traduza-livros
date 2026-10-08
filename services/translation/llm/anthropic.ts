@@ -7,15 +7,6 @@ function isModernModel(model: string): boolean {
   return /claude-(opus-4-[5-9]|opus-5|sonnet-4-6|sonnet-5|fable|mythos|haiku-5)/.test(model);
 }
 
-/**
- * Modelos com fallback no servidor: se um classificador de segurança recusar
- * um trecho (falso positivo comum em ficção), a API refaz o pedido em outro
- * modelo automaticamente, em vez de devolver a recusa.
- */
-function supportsServerFallback(model: string): boolean {
-  return /claude-(opus-5|fable-5|sonnet-5-5)/.test(model);
-}
-
 export class AnthropicClient implements LLMClient {
   readonly providerId = "anthropic";
   private client: Anthropic;
@@ -26,7 +17,7 @@ export class AnthropicClient implements LLMClient {
     private readonly effort: Effort,
   ) {
     // O SDK já repete automaticamente erros 408/409/429/5xx com backoff.
-    this.client = new Anthropic({ maxRetries: 6, timeout: 20 * 60 * 1000 });
+    this.client = new Anthropic({ maxRetries: 3, timeout: 20 * 60 * 1000 });
   }
 
   async complete(req: LLMRequest): Promise<LLMResponse> {
@@ -45,7 +36,6 @@ export class AnthropicClient implements LLMClient {
           system: [{ type: "text", text: req.system, cache_control: { type: "ephemeral" } }],
           messages: [{ role: "user", content: req.user }],
           ...(Object.keys(outputConfig).length ? { output_config: outputConfig } : {}),
-          ...(supportsServerFallback(model) ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const } : {}),
         },
         { signal: req.signal },
       );

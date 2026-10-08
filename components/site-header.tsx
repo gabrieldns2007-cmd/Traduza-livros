@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Wordmark } from "./wordmark";
+import { LinkPending } from "./ui/pending";
 
 const LINKS = [
   { href: "/", label: "Traduzir", short: "Traduzir", match: (p: string) => p === "/" },
@@ -25,11 +26,11 @@ export function SiteHeader() {
               key={l.href}
               href={l.href}
               aria-current={active ? "page" : undefined}
-              className={`rounded-full px-3 py-1.5 transition-colors ${active ? "text-ink" : "text-muted hover:text-ink"} ${l.href === "/" ? "hidden sm:inline-block" : ""}`}
+              className={`rounded-full px-3 py-2 transition-colors active:bg-paper-2 ${active ? "text-ink" : "text-muted hover:text-ink"} ${l.href === "/" ? "hidden sm:inline-block" : ""}`}
             >
               <span className="sm:hidden">{l.short}</span>
               <span className="hidden sm:inline">{l.label}</span>
-              {active && <span className="mx-auto mt-0.5 block h-px w-3 bg-accent" />}
+              {active ? <span className="mx-auto mt-0.5 block h-px w-3 bg-accent" /> : <LinkPending className="mx-auto mt-0.5 !block" />}
             </Link>
           );
         })}

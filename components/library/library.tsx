@@ -8,6 +8,7 @@ import { languageLabel } from "@/lib/languages";
 import { STATUS_LABEL, isActive, formatDate } from "@/lib/format";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { ArrowRight } from "@/components/ui/icons";
+import { LinkPending } from "@/components/ui/pending";
 
 export function Library({ initial }: { initial: BookSummary[] }) {
   const [books, setBooks] = useState(initial);
@@ -107,19 +108,22 @@ function BookRow({ book }: { book: BookSummary }) {
         <div className="mt-3.5 flex flex-wrap gap-x-5 gap-y-2 text-[0.875rem]">
           {book.status === "done" ? (
             <>
-              <Link href={`/livros/${book.id}/revisar/1`} className="link text-ink">
+              <Link href={`/livros/${book.id}/revisar/1`} className="link inline-flex items-center gap-1.5 py-1 text-ink">
                 Continuar
+                <LinkPending />
               </Link>
               <a href={`/api/books/${book.id}/export/epub`} download className="link text-ink-2 hover:text-ink">
                 Baixar EPUB
               </a>
-              <Link href={`/livros/${book.id}`} className="link text-ink-2 hover:text-ink">
+              <Link href={`/livros/${book.id}`} className="link inline-flex items-center gap-1.5 py-1 text-ink-2 hover:text-ink">
                 Detalhes
+                <LinkPending />
               </Link>
             </>
           ) : (
-            <Link href={`/livros/${book.id}`} className="link text-ink">
+            <Link href={`/livros/${book.id}`} className="link inline-flex items-center gap-1.5 py-1 text-ink">
               {book.status === "ready" ? "Começar" : active ? "Acompanhar" : "Continuar"}
+              <LinkPending />
             </Link>
           )}
         </div>

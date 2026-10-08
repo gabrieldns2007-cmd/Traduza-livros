@@ -9,9 +9,17 @@ import { Button } from "@/components/ui/button";
 import { Check } from "@/components/ui/icons";
 
 interface Payload {
-  settings: { providerId?: string; targetLanguage: string; dialogueStyle: "target" | "source"; deepContext: boolean; instructions: string };
-  providers: { id: string; label: string; available: boolean; model: string; hint?: string }[];
-  activeProvider: { id: string; model: string };
+  settings: {
+    providerId?: string;
+    targetLanguage: string;
+    dialogueStyle: "target" | "source";
+    deepContext: boolean;
+    instructions: string;
+    geminiModel?: string;
+  };
+  gemini: { hasKey: boolean; keyHint: string; fromEnv: boolean; models: { id: string; label: string; note: string }[] };
+  providers: { id: string; label: string; available: boolean; paid: boolean; model: string; hint?: string }[];
+  defaultProvider: string;
   dataDir: string;
   authEnabled: boolean;
   maxUploadMb: number;
@@ -21,15 +29,21 @@ export function SettingsForm() {
   const [data, setData] = useState<Payload | null>(null);
   const [form, setForm] = useState<Payload["settings"] | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [loadError, setLoadError] = useState("");
+  const [keyDraft, setKeyDraft] = useState("");
+  const [keyState, setKeyState] = useState<{ busy: boolean; message: string; ok?: boolean }>({ busy: false, message: "" });
 
   useEffect(() => {
-    api<Payload>("/api/settings").then((d) => {
-      setData(d);
-      setForm(d.settings);
-    });
+    api<Payload>("/api/settings")
+      .then((d) => {
+        setData(d);
+        setForm(d.settings);
+      })
+      .catch((e) => setLoadError((e as Error).message));
   }, []);
 
-  if (!data || !form) return <div className="mt-12 h-64 animate-pulse rounded-2xl bg-paper-2" />;
+  if (loadError) return <p className="mt-12 text-[0.9375rem] text-accent">Não foi possível carregar as configurações: {loadError}</p>;
+  if (!data || !form) return <div className="mt-12 h-64 animate-pulse rounded-2xl bg-paper-2" aria-label="Carregando" />;
 
   const update = (patch: Partial<Payload["settings"]>) => {
     setForm({ ...form, ...patch });
@@ -39,7 +53,7 @@ export function SettingsForm() {
   const save = async () => {
     setStatus("saving");
     try {
-      const d = await api<Payload>("/api/settings", { method: "PUT", json: { ...form, providerId: form.providerId ?? data.activeProvider.id } });
+      const d = await api<Payload>("/api/settings", { method: "PUT", json: form });
       setData(d);
       setForm(d.settings);
       setStatus("saved");
@@ -48,38 +62,110 @@ export function SettingsForm() {
     }
   };
 
-  const selected = form.providerId ?? data.activeProvider.id;
+  const saveKey = async (value: string) => {
+    setKeyState({ busy: true, message: "" });
+    try {
+      const d = await api<Payload>("/api/settings", { method: "PUT", json: { geminiApiKey: value } });
+      setData(d);
+      setKeyDraft("");
+      if (!value) return setKeyState({ busy: false, message: "Chave removida." });
+      const test = await api<{ ok: boolean; message?: string; models?: { id: string; available: boolean }[] }>("/api/settings", { method: "POST" });
+      setKeyState({
+        busy: false,
+        ok: test.ok,
+        message: test.ok ? "Chave salva e funcionando. Gemini Free está pronto." : (test.message ?? "A chave não funcionou."),
+      });
+    } catch (err) {
+      setKeyState({ busy: false, message: (err as Error).message, ok: false });
+    }
+  };
+
+  const freeDefault =
+    form.providerId && data.providers.find((p) => p.id === form.providerId && !p.paid && p.available) ? form.providerId : data.defaultProvider;
 
   return (
     <div className="rise mt-10 sm:mt-14">
-      <Section title="Tradução" note="Chaves de API ficam apenas no servidor, no arquivo .env.local — nunca no navegador.">
-        <div className="space-y-2" role="radiogroup" aria-label="Provedor de IA">
-          {data.providers.map((p) => {
-            const isSel = selected === p.id;
-            return (
-              <button
-                key={p.id}
-                role="radio"
-                aria-checked={isSel}
-                disabled={!p.available}
-                onClick={() => update({ providerId: p.id })}
-                className={`flex w-full items-start gap-3 rounded-xl border px-4 py-3.5 text-left transition-colors disabled:cursor-not-allowed ${isSel ? "border-ink" : "border-rule hover:border-rule-strong"} ${!p.available ? "opacity-55" : ""}`}
-              >
-                <span
-                  className={`mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${isSel ? "border-ink bg-ink" : "border-rule-strong"}`}
+      <Section title="Gemini Free" note="Tradução gratuita do Google, sem cartão. A chave fica só no servidor — nunca volta para o navegador.">
+        {data.gemini.hasKey ? (
+          <p className="text-[0.9375rem] text-ink">
+            Chave configurada <span className="num text-muted">{data.gemini.keyHint}</span>
+            {data.gemini.fromEnv && <span className="text-muted"> (variável de ambiente)</span>}
+          </p>
+        ) : (
+          <p className="text-[0.9375rem] text-ink-2">
+            Crie uma chave gratuita em{" "}
+            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="link text-ink">
+              aistudio.google.com/apikey
+            </a>{" "}
+            (botão “Create API key”) e cole aqui.
+          </p>
+        )}
+        {!data.gemini.fromEnv && (
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="block flex-1">
+              <span className="label">{data.gemini.hasKey ? "Trocar chave" : "Chave da API"}</span>
+              <input
+                type="password"
+                autoComplete="off"
+                spellCheck={false}
+                value={keyDraft}
+                onChange={(e) => setKeyDraft(e.target.value)}
+                placeholder="Cole a chave aqui"
+                className="mt-1.5 w-full border-b border-rule-strong bg-transparent py-2 text-[1rem] text-ink outline-none focus:border-ink"
+              />
+            </label>
+            <Button onClick={() => saveKey(keyDraft)} disabled={keyState.busy || !keyDraft.trim()} className="h-11 px-5 text-[0.875rem]">
+              {keyState.busy ? "Testando…" : "Salvar e testar"}
+            </Button>
+          </div>
+        )}
+        {keyState.message && <p className={`mt-3 text-[0.875rem] ${keyState.ok === false ? "text-accent" : "text-ok"}`}>{keyState.message}</p>}
+        {data.gemini.hasKey && !data.gemini.fromEnv && (
+          <button onClick={() => saveKey("")} className="link mt-3 text-[0.8125rem] text-muted hover:text-ink">
+            Remover chave
+          </button>
+        )}
+        <div className="mt-6">
+          <span className="label">Modelo</span>
+          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+            {data.gemini.models.map((m) => {
+              const sel = (form.geminiModel ?? data.gemini.models[0].id) === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => update({ geminiModel: m.id })}
+                  className={`rounded-xl border px-4 py-3 text-left transition-colors active:bg-paper-2 ${sel ? "border-ink" : "border-rule hover:border-rule-strong"}`}
                 >
-                  {isSel && <span className="h-1.5 w-1.5 rounded-full bg-paper" />}
-                </span>
-                <span className="min-w-0">
-                  <span className="block text-[0.9375rem] text-ink">{p.label}</span>
-                  <span className="mt-0.5 block text-[0.8125rem] text-muted">
-                    {p.available ? (p.id === "demo" ? p.hint : `Modelo: ${p.model}`) : p.hint}
-                  </span>
-                </span>
-              </button>
-            );
-          })}
+                  <span className="block text-[0.9375rem] text-ink">{m.label}</span>
+                  <span className="mt-0.5 block text-[0.8125rem] text-muted">{m.note}</span>
+                </button>
+              );
+            })}
+          </div>
         </div>
+      </Section>
+
+      <Section
+        title="Provedores"
+        note="O provedor é escolhido em cada livro, antes de começar. Provedores pagos sempre pedem confirmação e nunca são usados automaticamente."
+      >
+        <ul className="divide-y divide-rule border-y border-rule">
+          {data.providers.map((p) => (
+            <li key={p.id} className="flex items-baseline justify-between gap-4 py-3">
+              <span className="min-w-0">
+                <span className="block text-[0.9375rem] text-ink">
+                  {p.label}
+                  {p.id === freeDefault && <span className="ml-2 text-[0.75rem] text-muted">padrão</span>}
+                </span>
+                <span className="mt-0.5 block truncate text-[0.8125rem] text-muted">{p.available ? p.model : p.hint}</span>
+              </span>
+              <span className={`shrink-0 text-[0.75rem] ${p.paid ? "text-accent" : "text-ok"}`}>
+                {p.paid ? "Pago" : "Gratuito"} {p.available ? "" : "· não configurado"}
+              </span>
+            </li>
+          ))}
+        </ul>
       </Section>
 
       <Section title="Padrões para novos livros">
@@ -115,7 +201,7 @@ export function SettingsForm() {
             checked={form.deepContext}
             onChange={(v) => update({ deepContext: v })}
             label="Leitura atenta de cada capítulo"
-            description="Resume cada capítulo e amplia o glossário antes de traduzir. Recomendado para ficção."
+            description="Uma chamada extra por capítulo para resumir a história. Melhora a continuidade, mas gasta mais cota. Desligado por padrão."
           />
         </div>
         <label className="mt-7 block">

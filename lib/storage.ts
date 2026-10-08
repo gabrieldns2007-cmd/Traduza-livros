@@ -213,6 +213,9 @@ class BookStore {
 
 export interface Settings {
   providerId?: string;
+  /** chave gratuita do Gemini (fica só no servidor, em data/settings.json) */
+  geminiApiKey?: string;
+  geminiModel?: string;
   targetLanguage: string;
   dialogueStyle: "target" | "source";
   deepContext: boolean;
@@ -222,7 +225,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   targetLanguage: "pt-BR",
   dialogueStyle: "target",
-  deepContext: true,
+  deepContext: false,
   instructions: "",
 };
 

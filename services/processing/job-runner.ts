@@ -10,13 +10,13 @@
  */
 import type { BookMeta } from "@/types/book";
 import { store, readSettings } from "@/lib/storage";
-import { config } from "@/lib/config";
+import { defaultProviderId } from "@/lib/config";
 import { toPlainText } from "@/lib/markup";
 import { mergeCandidates } from "@/services/glossary/glossary";
-import { getTranslationProvider, type TranslationProvider } from "@/services/translation";
+import { createProvider, type TranslationProvider } from "@/services/translation";
 import { ProviderError } from "@/services/translation/llm/types";
 import { KeyedMutex, mapLimit } from "@/utils/async";
-import { bookContext, processChapter } from "./chapter-processor";
+import { bookContext, pendingChars, processChapters } from "./chapter-processor";
 
 const ACTIVE: BookMeta["status"][] = ["queued", "analyzing", "translating"];
 
@@ -29,7 +29,7 @@ class JobRunner {
   private restart = new Set<string>();
   private analysisMutex = new KeyedMutex();
   /** fábrica do provedor (substituível em testes) */
-  providerFactory: (id?: string) => TranslationProvider = getTranslationProvider;
+  providerFactory: (id: string, settings?: Awaited<ReturnType<typeof readSettings>>) => TranslationProvider = createProvider;
 
   /** Retoma livros que estavam em andamento quando o servidor parou. */
   async init() {
@@ -38,6 +38,19 @@ class JobRunner {
     const books = await store.list();
     const pending = books.filter((b) => ACTIVE.includes(b.status)).sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
     for (const b of pending) {
+      // provedor pago nunca recomeça sozinho: fica pausado até o usuário confirmar
+      const paid = b.provider && b.provider.id !== "gemini" && b.provider.id !== "demo";
+      if (paid) {
+        await store.update(b.id, (m) => {
+          m.status = "paused";
+          m.phase = "Pausado";
+          m.activeChapterIds = [];
+          m.error = "O servidor reiniciou. Toque em “Continuar tradução” para seguir.";
+          m.stopCode = "restart";
+          for (const c of m.chapters) if (c.status === "translating" || c.status === "analyzing") c.status = "pending";
+        });
+        continue;
+      }
       await store.update(b.id, (m) => {
         m.status = "queued";
         m.activeChapterIds = [];
@@ -131,8 +144,21 @@ class JobRunner {
         `[runner] ${bookId}: ${resume.doneChapters}/${resume.totalChapters} capítulos já concluídos; continuando de ${resume.nextChapterId ?? "—"}`,
       );
 
+    // usa SEMPRE o provedor escolhido para este livro — nunca troca sozinho (nem para um pago)
     const settings = await readSettings();
-    const provider = this.providerFactory(settings.providerId);
+    const providerId = meta.provider?.id ?? defaultProviderId(settings);
+    let provider: TranslationProvider;
+    try {
+      provider = this.providerFactory(providerId, settings);
+    } catch (err) {
+      await store.update(bookId, (m) => {
+        m.status = "paused";
+        m.phase = "Pausado";
+        m.error = err instanceof Error ? err.message : String(err);
+        m.stopCode = err instanceof ProviderError ? err.code : "other";
+      });
+      return;
+    }
     await store.update(bookId, (m) => {
       m.provider = { id: provider.id, model: provider.model };
       m.progress.startedAt ??= new Date().toISOString();
@@ -145,10 +171,39 @@ class JobRunner {
     const baseMeasured = base.progress.measuredWords;
     const wordsAtStart = base.progress.translatedWords;
 
-    // sinal interno: cancela os outros capítulos se um deles falhar de vez
+    // sinal interno: cancela os outros grupos se um deles falhar de vez
     const inner = new AbortController();
     const forward = () => inner.abort(signal.reason);
     signal.addEventListener("abort", forward, { once: true });
+
+    const hooks = {
+      signal: inner.signal,
+      analysisLock: <T>(fn: () => Promise<T>) => this.analysisMutex.run(`analysis:${bookId}`, fn),
+      onUsage: async (usage: { inputTokens: number; outputTokens: number }) => {
+        if (!usage.inputTokens && !usage.outputTokens) return;
+        await store.update(
+          bookId,
+          (m) => {
+            m.usage.inputTokens += usage.inputTokens;
+            m.usage.outputTokens += usage.outputTokens;
+          },
+          { persist: false },
+        );
+      },
+      onProgress: async (chapterId: string, delta: { words: number; segments: number; failed: number }) => {
+        await store.update(bookId, (m) => {
+          const c = m.chapters.find((x) => x.id === chapterId)!;
+          c.translatedWords += delta.words;
+          c.translatedSegments += delta.segments;
+          c.failedSegments += delta.failed;
+          m.progress.translatedWords += delta.words;
+          m.progress.translatedSegments += delta.segments;
+          m.progress.activeMs = baseActive + (Date.now() - runStart);
+          m.progress.measuredWords = baseMeasured + (m.progress.translatedWords - wordsAtStart);
+        });
+      },
+      onChapterSaved: (chapterId: string) => this.finishChapter(bookId, chapterId, provider),
+    };
 
     try {
       if (!base.profile) await this.analyzeBook(bookId, provider, signal);
@@ -164,49 +219,44 @@ class JobRunner {
         const todo = fresh.chapters.filter((c) => c.status !== "done");
         if (!todo.length || inner.signal.aborted) break;
 
+        // capítulos pequenos e consecutivos vão juntos no mesmo pedido (menos chamadas)
+        const groups: (typeof todo)[] = [];
+        let group: typeof todo = [];
+        let chars = 0;
+        for (const c of todo) {
+          const n = await pendingChars(bookId, c);
+          if (group.length && (chars + n > provider.limits.batchChars || group.length >= 40)) {
+            groups.push(group);
+            group = [];
+            chars = 0;
+          }
+          group.push(c);
+          chars += n;
+        }
+        if (group.length) groups.push(group);
+
         await mapLimit(
-          todo,
-          config.concurrency,
-          async (chapter) => {
+          groups,
+          provider.limits.concurrency,
+          async (chapters) => {
             if (inner.signal.aborted) return;
             try {
               await store.update(bookId, (m) => {
-                const c = m.chapters.find((x) => x.id === chapter.id)!;
-                c.status = "translating";
-                if (!m.activeChapterIds.includes(c.id)) m.activeChapterIds.push(c.id);
+                for (const ch of chapters) {
+                  const c = m.chapters.find((x) => x.id === ch.id)!;
+                  c.status = "translating";
+                  if (!m.activeChapterIds.includes(c.id)) m.activeChapterIds.push(c.id);
+                }
               });
               const latest = (await store.get(bookId))!;
-              const ch = latest.chapters.find((x) => x.id === chapter.id)!;
-
-              await processChapter(latest, ch, provider, {
-                signal: inner.signal,
-                analysisLock: (fn) => this.analysisMutex.run(`analysis:${bookId}`, fn),
-                onUsage: async (usage) => {
-                  if (!usage.inputTokens && !usage.outputTokens) return;
-                  await store.update(
-                    bookId,
-                    (m) => {
-                      m.usage.inputTokens += usage.inputTokens;
-                      m.usage.outputTokens += usage.outputTokens;
-                    },
-                    { persist: false },
-                  );
-                },
-                onProgress: async (chapterId, delta) => {
-                  await store.update(bookId, (m) => {
-                    const c = m.chapters.find((x) => x.id === chapterId)!;
-                    c.translatedWords += delta.words;
-                    c.translatedSegments += delta.segments;
-                    c.failedSegments += delta.failed;
-                    m.progress.translatedWords += delta.words;
-                    m.progress.translatedSegments += delta.segments;
-                    m.progress.activeMs = baseActive + (Date.now() - runStart);
-                    m.progress.measuredWords = baseMeasured + (m.progress.translatedWords - wordsAtStart);
-                  });
-                },
-              });
-
-              await this.finishChapter(bookId, chapter.id);
+              const ids = new Set(chapters.map((c) => c.id));
+              await processChapters(
+                latest,
+                latest.chapters.filter((c) => ids.has(c.id)),
+                provider,
+                hooks,
+              );
+              for (const c of chapters) await this.finishChapter(bookId, c.id, provider);
             } catch (err) {
               if (!inner.signal.aborted) inner.abort(err);
               throw err;
@@ -316,7 +366,7 @@ class JobRunner {
     });
   }
 
-  private async finishChapter(bookId: string, chapterId: string) {
+  private async finishChapter(bookId: string, chapterId: string, provider?: TranslationProvider) {
     const meta = (await store.get(bookId))!;
     const ch = meta.chapters.find((c) => c.id === chapterId)!;
     const doc = await store.readDoc(bookId, ch.docId);
@@ -332,6 +382,10 @@ class JobRunner {
     await store.update(bookId, (m) => {
       const c = m.chapters.find((x) => x.id === chapterId)!;
       c.status = allDone ? "done" : "pending";
+      if (allDone && provider && c.translatedSegments > 0 && !c.provider) {
+        c.provider = provider.id;
+        c.model = provider.model;
+      }
       if (translatedTitle) c.translatedTitle = translatedTitle;
       m.activeChapterIds = m.activeChapterIds.filter((id) => id !== chapterId);
     });

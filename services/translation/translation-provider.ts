@@ -77,14 +77,26 @@ export interface BatchInput {
 export interface BatchOutput {
   /** id do segmento → tradução (marcação compacta, ainda não validada) */
   translations: Map<number, string>;
+  /** nomes/termos novos que o modelo listou junto da tradução (economiza uma chamada por capítulo) */
+  newTerms?: GlossaryCandidate[];
   truncated: boolean;
   refused: boolean;
   usage: { inputTokens: number; outputTokens: number };
 }
 
+export interface ProviderLimits {
+  /** caracteres de texto de origem por pedido (vários capítulos pequenos cabem num pedido só) */
+  batchChars: number;
+  /** pedidos simultâneos */
+  concurrency: number;
+}
+
 export interface TranslationProvider {
   readonly id: string;
   readonly model: string;
+  /** pode gerar cobrança */
+  readonly paid: boolean;
+  readonly limits: ProviderLimits;
   analyzeBook(input: BookAnalysisInput, signal?: AbortSignal): Promise<BookAnalysis & { usage?: BatchOutput["usage"] }>;
   analyzeChapter(input: ChapterAnalysisInput, signal?: AbortSignal): Promise<ChapterAnalysis & { usage?: BatchOutput["usage"] }>;
   translateBatch(input: BatchInput): Promise<BatchOutput>;

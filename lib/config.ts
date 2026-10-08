@@ -22,7 +22,7 @@ export const config = {
   appPassword: process.env.APP_PASSWORD || "",
 };
 
-export type ProviderId = "anthropic" | "openai" | "demo";
+export type ProviderId = "gemini" | "anthropic" | "openai" | "demo";
 
 export interface ProviderConfig {
   id: ProviderId;
@@ -30,20 +30,48 @@ export interface ProviderConfig {
   available: boolean;
   model: string;
   analysisModel: string;
+  /** pode gerar cobrança? (exige confirmação antes de usar) */
+  paid: boolean;
   /** motivo de indisponibilidade (para a tela de configurações) */
   hint?: string;
 }
 
-export function providerConfigs(): ProviderConfig[] {
+/** Valores salvos pela tela de Ajustes que afetam provedores (nunca enviados ao navegador). */
+export interface ProviderSettings {
+  geminiApiKey?: string;
+  geminiModel?: string;
+}
+
+export const GEMINI_MODELS = [
+  { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash", note: "melhor qualidade · poucos pedidos por dia" },
+  { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", note: "mais pedidos por dia · qualidade um pouco menor" },
+];
+
+export function geminiApiKey(s?: ProviderSettings): string {
+  return (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || s?.geminiApiKey || "").trim();
+}
+
+export function providerConfigs(s?: ProviderSettings): ProviderConfig[] {
   const anthropicModel = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
   const openaiModel = process.env.OPENAI_MODEL || "";
+  const geminiModel = process.env.GEMINI_MODEL || s?.geminiModel || "gemini-3.8-flash";
   return [
+    {
+      id: "gemini",
+      label: "Gemini Free",
+      available: Boolean(geminiApiKey(s)),
+      model: geminiModel,
+      analysisModel: geminiModel,
+      paid: false,
+      hint: "Adicione sua chave gratuita do Google AI Studio em Ajustes",
+    },
     {
       id: "anthropic",
       label: "Anthropic (Claude)",
       available: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN),
       model: anthropicModel,
       analysisModel: process.env.ANTHROPIC_ANALYSIS_MODEL || anthropicModel,
+      paid: true,
       hint: "Defina ANTHROPIC_API_KEY no arquivo .env.local",
     },
     {
@@ -52,6 +80,7 @@ export function providerConfigs(): ProviderConfig[] {
       available: Boolean(process.env.OPENAI_API_KEY && openaiModel) || Boolean(process.env.OPENAI_BASE_URL && openaiModel),
       model: openaiModel,
       analysisModel: process.env.OPENAI_ANALYSIS_MODEL || openaiModel,
+      paid: true,
       hint: "Defina OPENAI_API_KEY e OPENAI_MODEL (e OPENAI_BASE_URL para provedores compatíveis)",
     },
     {
@@ -60,15 +89,19 @@ export function providerConfigs(): ProviderConfig[] {
       available: true,
       model: "demo",
       analysisModel: "demo",
+      paid: false,
       hint: "Copia o texto original — útil para testar o fluxo sem chave de API",
     },
   ];
 }
 
-/** Provedor padrão: o definido em LLM_PROVIDER, senão o primeiro disponível. */
-export function defaultProviderId(): ProviderId {
-  const configured = process.env.LLM_PROVIDER as ProviderId | undefined;
-  const all = providerConfigs();
-  if (configured && all.find((p) => p.id === configured)?.available) return configured;
-  return all.find((p) => p.available && p.id !== "demo")?.id ?? "demo";
+/**
+ * Provedor sugerido para novas traduções: sempre um GRATUITO.
+ * Provedores pagos só são usados quando escolhidos e confirmados pelo usuário.
+ */
+export function defaultProviderId(s?: ProviderSettings & { providerId?: string }): ProviderId {
+  const all = providerConfigs(s);
+  const preferred = all.find((p) => p.id === s?.providerId && p.available && !p.paid);
+  if (preferred) return preferred.id;
+  return all.find((p) => p.id === "gemini" && p.available) ? "gemini" : "demo";
 }

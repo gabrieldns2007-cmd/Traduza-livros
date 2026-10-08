@@ -16,10 +16,13 @@ const CHAPTERS = 12;
 class CountingProvider implements TranslationProvider {
   id = "fake";
   model = "fake";
+  paid = false;
+  limits = { batchChars: 1000, concurrency: 1 };
   sent: number[][] = []; // [docIndexHint, segId] não importa: guardamos textos enviados
   texts: string[] = [];
   analyzed: string[] = [];
   bookAnalyses = 0;
+  calls = 0;
   constructor(private creditsLeft = Infinity) {}
   async analyzeBook() {
     this.bookAnalyses++;
@@ -40,9 +43,12 @@ class CountingProvider implements TranslationProvider {
   async translateBatch(input: BatchInput): Promise<BatchOutput> {
     if (this.creditsLeft <= 0) throw this.noCredits();
     this.creditsLeft--;
+    this.calls++;
     for (const s of input.segments) this.texts.push(s.text);
     return {
       translations: new Map(input.segments.map((s) => [s.id, `PT ${s.text}`])),
+      // nomes novos vêm junto da tradução (sem chamada extra)
+      newTerms: [{ term: `Lugar ${this.calls}-${input.chapterTitle}`, translation: "X", type: "place" as const }],
       truncated: false,
       refused: false,
       usage: { inputTokens: 1, outputTokens: 1 },
@@ -80,7 +86,7 @@ describe("retomada após falta de créditos", () => {
 
   it("pausa com a mensagem de créditos sem apagar nada e continua do ponto certo", async () => {
     // 1ª execução: créditos acabam depois de 5 lotes
-    const first = new CountingProvider(5);
+    const first = new CountingProvider(2);
     jobRunner.providerFactory = () => first;
     await jobRunner.start(bookId);
     const stopped = await waitFor(bookId, ["paused", "error"]);
@@ -128,6 +134,11 @@ describe("retomada após falta de créditos", () => {
     expect(second.bookAnalyses).toBe(0);
     const resummarized = finished.chapters.filter((c) => summariesBefore.includes(c.id) && second.analyzed.includes(c.title));
     expect(resummarized).toHaveLength(0);
+    // economia: nenhuma chamada extra por capítulo (análise desligada por padrão)
+    expect(first.analyzed).toHaveLength(0);
+    expect(second.analyzed).toHaveLength(0);
+    // vários capítulos pequenos por pedido: bem menos pedidos que capítulos
+    expect(first.calls + second.calls).toBeLessThan(CHAPTERS);
 
     // traduções antigas preservadas exatamente; glossário só cresceu
     for (const d of finished.docs) {

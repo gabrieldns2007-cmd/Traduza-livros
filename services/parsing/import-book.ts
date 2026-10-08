@@ -105,7 +105,7 @@ export async function importBook(bytes: Uint8Array, opts: ImportOptions): Promis
         chapters: chapters.length,
       },
       progress: { translatedWords: 0, translatedSegments: 0, activeMs: 0, measuredWords: 0 },
-      options: { dialogueStyle: "target", deepContext: true },
+      options: { dialogueStyle: "target", deepContext: false },
       usage: { inputTokens: 0, outputTokens: 0 },
       cover: pkg.coverPath,
       contentVersion: 0,

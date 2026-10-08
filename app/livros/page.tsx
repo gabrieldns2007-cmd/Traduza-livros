@@ -5,6 +5,7 @@ import { store } from "@/lib/storage";
 import { summaryOf } from "@/lib/api";
 import { jobRunner } from "@/services/processing/job-runner";
 import { Library } from "@/components/library/library";
+import { LinkPending } from "@/components/ui/pending";
 
 export const metadata: Metadata = { title: "Meus livros" };
 
@@ -22,8 +23,9 @@ export default async function LibraryPage() {
           </p>
         </div>
         {books.length > 0 && (
-          <Link href="/" className="link mb-1 shrink-0 text-[0.875rem] text-ink-2 hover:text-ink">
+          <Link href="/" className="link mb-1 inline-flex shrink-0 items-center gap-1.5 py-1 text-[0.875rem] text-ink-2 hover:text-ink">
             Novo livro
+            <LinkPending />
           </Link>
         )}
       </header>

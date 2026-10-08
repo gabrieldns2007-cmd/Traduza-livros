@@ -1,13 +1,12 @@
 import { connection } from "next/server";
 import { readSettings } from "@/lib/storage";
 import { config } from "@/lib/config";
-import { getTranslationProvider } from "@/services/translation";
+import { defaultProviderId } from "@/lib/config";
 import { TranslateFlow } from "@/components/home/translate-flow";
 
 export default async function HomePage() {
   await connection();
   const settings = await readSettings();
-  const provider = getTranslationProvider(settings.providerId);
 
   return (
     <main className="mx-auto w-full max-w-[42rem] px-5 pt-10 pb-24 sm:px-8 sm:pt-20">
@@ -28,7 +27,7 @@ export default async function HomePage() {
             deepContext: settings.deepContext,
             instructions: settings.instructions,
             maxUploadMb: Math.round(config.maxUploadBytes / 1024 / 1024),
-            demo: provider.id === "demo",
+            demo: defaultProviderId(settings) === "demo",
           }}
         />
       </section>

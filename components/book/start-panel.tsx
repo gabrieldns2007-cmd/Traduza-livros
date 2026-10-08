@@ -8,6 +8,7 @@ import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "@/components/ui/icons";
 import { formatNumber } from "@/lib/format";
+import { ProviderPicker, type ProviderChoice } from "./provider-picker";
 
 /** Livro enviado mas ainda não iniciado. */
 export function StartPanel({ book, onStarted }: { book: BookView; onStarted: (b: BookView) => void }) {
@@ -15,6 +16,7 @@ export function StartPanel({ book, onStarted }: { book: BookView; onStarted: (b:
   const [target, setTarget] = useState(book.targetLanguage);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [choice, setChoice] = useState<ProviderChoice | null>(null);
 
   const start = async () => {
     setBusy(true);
@@ -22,7 +24,7 @@ export function StartPanel({ book, onStarted }: { book: BookView; onStarted: (b:
     try {
       const { book: b } = await api<{ book: BookView }>(`/api/books/${book.id}/translate`, {
         method: "POST",
-        json: { action: "start", sourceLanguage: source, targetLanguage: target },
+        json: { action: "start", sourceLanguage: source, targetLanguage: target, providerId: choice?.providerId, confirmCost: choice?.confirmCost },
       });
       onStarted(b);
     } catch (err) {
@@ -60,7 +62,10 @@ export function StartPanel({ book, onStarted }: { book: BookView; onStarted: (b:
           ))}
         </Select>
       </div>
-      <Button onClick={start} disabled={busy} className="mt-9 w-full sm:w-auto">
+      <div className="mt-8">
+        <ProviderPicker bookId={book.id} onChange={setChoice} />
+      </div>
+      <Button onClick={start} disabled={busy || !choice?.ready} className="mt-8 w-full sm:w-auto">
         {busy ? "Começando…" : "Começar tradução"} {!busy && <ArrowRight />}
       </Button>
       {error && <p className="mt-4 text-[0.9375rem] text-accent">{error}</p>}

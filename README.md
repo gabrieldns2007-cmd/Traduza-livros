@@ -146,6 +146,22 @@ A fila grava o progresso em disco a cada lote. A página do livro consulta a API
 
 ---
 
+## Tradução gratuita com Gemini
+
+O provedor padrão é o **Gemini Free** (Google AI Studio), sem cartão e sem billing:
+
+1. Crie uma chave em [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → **Create API key**.
+2. No Verso, abra **Ajustes**, cole a chave em “Chave da API” e toque em **Salvar e testar**. (Ou defina `GEMINI_API_KEY` no ambiente.)
+3. Escolha o modelo: **Gemini 3.8 Flash** (melhor qualidade, poucos pedidos por dia) ou **Gemini 3.5 Flash-Lite** (mais pedidos por dia).
+
+Para caber no limite diário gratuito, o Verso manda trechos grandes por pedido — vários capítulos pequenos vão juntos — e extrai os nomes do glossário na mesma resposta. Quando o limite gratuito acaba, a tradução **pausa** (“Limite gratuito atingido…”) e continua do mesmo ponto quando a cota volta. No nível gratuito, o Google pode usar o texto enviado para melhorar os produtos dele.
+
+**Regras de custo:** o Verso nunca liga billing, nunca troca de provedor sozinho e nunca usa um provedor pago sem você escolher e confirmar (“Esta tradução pode gerar custos”, com estimativa). Traduções com provedor pago não recomeçam sozinhas depois de reiniciar o servidor.
+
+## Rodando no GitHub Codespaces
+
+`npm run dev` compila cada página na primeira vez que ela é aberta, o que pode demorar. Para uso diário, rode `npm run app` (prepara uma versão rápida e inicia). Depois abra a aba **Ports** → porta **3000** → ícone de globo.
+
 ## Pausas, créditos e retomada
 
 O progresso é gravado em disco a cada lote traduzido (e o capítulo é marcado como concluído assim que termina). Se a conta do provedor ficar sem créditos, a tradução **pausa** com uma mensagem clara — nada é apagado. Depois de adicionar créditos, toque em **Continuar tradução**: o Verso confere nos arquivos o que já está traduzido, pula os capítulos concluídos, continua o capítulo interrompido a partir do trecho onde parou e mantém glossário, perfil e resumos.
