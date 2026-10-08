@@ -121,7 +121,7 @@ export function FreeServiceCard({
               className="mt-1.5 w-full border-b border-rule-strong bg-transparent py-2 text-[1rem] text-ink outline-none focus:border-ink"
             />
           </label>
-          <Button onClick={() => saveKey(draft)} disabled={state.busy || !draft.trim()} className="h-11 px-5 text-[0.875rem]">
+          <Button size="sm" onClick={() => saveKey(draft)} disabled={state.busy || !draft.trim()}>
             {state.busy ? "Testando…" : "Salvar e testar"}
           </Button>
         </div>

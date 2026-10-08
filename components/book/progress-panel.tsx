@@ -260,7 +260,7 @@ export function ProgressPanel({
 
       <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-3">
         {running ? (
-          <Button variant="secondary" onClick={() => run("pause")} disabled={busy} className="h-10 px-5 text-[0.875rem]">
+          <Button variant="secondary" size="sm" onClick={() => run("pause")} disabled={busy}>
             Pausar
           </Button>
         ) : (

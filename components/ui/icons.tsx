@@ -22,6 +22,11 @@ export const Chevron = ({ className = "h-4 w-4" }: P) => (
     <path d="M5.5 8l4.5 4.5L14.5 8" />
   </svg>
 );
+export const Plus = ({ className = "h-4 w-4" }: P) => (
+  <svg viewBox="0 0 20 20" className={className} aria-hidden {...s}>
+    <path d="M10 4.5v11M4.5 10h11" />
+  </svg>
+);
 export const Close = ({ className = "h-4 w-4" }: P) => (
   <svg viewBox="0 0 20 20" className={className} aria-hidden {...s}>
     <path d="M5 5l10 10M15 5L5 15" />
