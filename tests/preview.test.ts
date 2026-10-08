@@ -57,7 +57,8 @@ describe("prévia grátis", () => {
             `<h1>Chapter ${i + 1}</h1>` +
             Array.from(
               { length: 30 },
-              (_, j) => `<p>Paragraph ${j + 1} of chapter ${i + 1}: the lighthouse keeper counted the waves again, slowly, as if they owed him something.</p>`,
+              (_, j) =>
+                `<p>Paragraph ${j + 1} of chapter ${i + 1}: the lighthouse keeper counted the waves again, slowly, as if they owed him something.</p>`,
             ).join(""),
         })),
       ],
