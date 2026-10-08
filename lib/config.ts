@@ -22,7 +22,11 @@ export const config = {
   appPassword: process.env.APP_PASSWORD || "",
 };
 
-export type ProviderId = "gemini" | "anthropic" | "openai" | "demo";
+export type ProviderId = "gemini" | "github" | "groq" | "anthropic" | "openai" | "demo";
+
+/** Serviços gratuitos (sem cartão), na ordem em que são sugeridos. */
+export const FREE_PROVIDERS = ["gemini", "github", "groq"] as const;
+export type FreeProviderId = (typeof FREE_PROVIDERS)[number];
 
 export interface ProviderConfig {
   id: ProviderId;
@@ -40,6 +44,10 @@ export interface ProviderConfig {
 export interface ProviderSettings {
   geminiApiKey?: string;
   geminiModel?: string;
+  githubToken?: string;
+  githubModel?: string;
+  groqApiKey?: string;
+  groqModel?: string;
 }
 
 export const GEMINI_MODELS = [
@@ -47,9 +55,36 @@ export const GEMINI_MODELS = [
   { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", note: "mais pedidos por dia · qualidade um pouco menor" },
 ];
 
+export const GITHUB_MODELS = [
+  { id: "openai/gpt-4.1", label: "GPT-4.1", note: "melhor qualidade · cerca de 50 pedidos por dia" },
+  { id: "openai/gpt-4.1-mini", label: "GPT-4.1 mini", note: "mais pedidos por dia · qualidade um pouco menor" },
+];
+
+export const GROQ_MODELS = [
+  { id: "llama-3.3-70b-versatile", label: "Llama 3.3 70B", note: "boa qualidade · limite de texto por dia" },
+  { id: "openai/gpt-oss-120b", label: "GPT-OSS 120B", note: "modelo aberto da OpenAI · limite de texto por dia" },
+];
+
 export function geminiApiKey(s?: ProviderSettings): string {
   return (process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || s?.geminiApiKey || "").trim();
 }
+
+/** Token do GitHub com permissão “Models: read”. (O GITHUB_TOKEN automático do Codespaces não é usado.) */
+export function githubToken(s?: ProviderSettings): string {
+  return (process.env.GITHUB_MODELS_TOKEN || s?.githubToken || "").trim();
+}
+
+export function groqApiKey(s?: ProviderSettings): string {
+  return (process.env.GROQ_API_KEY || s?.groqApiKey || "").trim();
+}
+
+export const FREE_KEY_FIELDS = { gemini: "geminiApiKey", github: "githubToken", groq: "groqApiKey" } as const;
+export const FREE_MODEL_FIELDS = { gemini: "geminiModel", github: "githubModel", groq: "groqModel" } as const;
+export const FREE_MODELS: Record<FreeProviderId, { id: string; label: string; note: string }[]> = {
+  gemini: GEMINI_MODELS,
+  github: GITHUB_MODELS,
+  groq: GROQ_MODELS,
+};
 
 export function providerConfigs(s?: ProviderSettings): ProviderConfig[] {
   const anthropicModel = process.env.ANTHROPIC_MODEL || "claude-opus-5-5";
@@ -64,6 +99,24 @@ export function providerConfigs(s?: ProviderSettings): ProviderConfig[] {
       analysisModel: geminiModel,
       paid: false,
       hint: "Adicione sua chave gratuita do Google AI Studio em Ajustes",
+    },
+    {
+      id: "github",
+      label: "GitHub Models",
+      available: Boolean(githubToken(s)),
+      model: process.env.GITHUB_MODELS_MODEL || s?.githubModel || GITHUB_MODELS[0].id,
+      analysisModel: process.env.GITHUB_MODELS_MODEL || s?.githubModel || GITHUB_MODELS[0].id,
+      paid: false,
+      hint: "Adicione um token gratuito do GitHub em Ajustes",
+    },
+    {
+      id: "groq",
+      label: "Groq",
+      available: Boolean(groqApiKey(s)),
+      model: process.env.GROQ_MODEL || s?.groqModel || GROQ_MODELS[0].id,
+      analysisModel: process.env.GROQ_MODEL || s?.groqModel || GROQ_MODELS[0].id,
+      paid: false,
+      hint: "Adicione sua chave gratuita do Groq em Ajustes",
     },
     {
       id: "anthropic",
@@ -103,5 +156,5 @@ export function defaultProviderId(s?: ProviderSettings & { providerId?: string }
   const all = providerConfigs(s);
   const preferred = all.find((p) => p.id === s?.providerId && p.available && !p.paid);
   if (preferred) return preferred.id;
-  return all.find((p) => p.id === "gemini" && p.available) ? "gemini" : "demo";
+  return all.find((p) => (FREE_PROVIDERS as readonly string[]).includes(p.id) && p.available)?.id ?? "demo";
 }

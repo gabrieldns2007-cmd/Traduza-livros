@@ -12,7 +12,7 @@ type Ctx = { params: Promise<{ id: string }> };
 const Body = z.object({
   action: z.enum(["start", "pause", "resume", "retry-failed"]),
   /** provedor escolhido pelo usuário (padrão: o gratuito) */
-  providerId: z.enum(["gemini", "anthropic", "openai", "demo"]).optional(),
+  providerId: z.enum(["gemini", "github", "groq", "anthropic", "openai", "demo"]).optional(),
   /** confirmação explícita de que a tradução pode gerar custos */
   confirmCost: z.boolean().optional(),
   targetLanguage: z.string().max(20).optional(),

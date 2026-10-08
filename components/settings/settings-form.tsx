@@ -7,6 +7,7 @@ import { Select } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Check } from "@/components/ui/icons";
+import { FreeServiceCard, type FreeService } from "./free-service-card";
 
 interface Payload {
   settings: {
@@ -15,9 +16,8 @@ interface Payload {
     dialogueStyle: "target" | "source";
     deepContext: boolean;
     instructions: string;
-    geminiModel?: string;
   };
-  gemini: { hasKey: boolean; keyHint: string; fromEnv: boolean; models: { id: string; label: string; note: string }[] };
+  free: FreeService[];
   providers: { id: string; label: string; available: boolean; paid: boolean; model: string; hint?: string }[];
   defaultProvider: string;
   dataDir: string;
@@ -30,8 +30,6 @@ export function SettingsForm() {
   const [form, setForm] = useState<Payload["settings"] | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [loadError, setLoadError] = useState("");
-  const [keyDraft, setKeyDraft] = useState("");
-  const [keyState, setKeyState] = useState<{ busy: boolean; message: string; ok?: boolean }>({ busy: false, message: "" });
 
   useEffect(() => {
     api<Payload>("/api/settings")
@@ -62,109 +60,43 @@ export function SettingsForm() {
     }
   };
 
-  const saveKey = async (value: string) => {
-    setKeyState({ busy: true, message: "" });
-    try {
-      const d = await api<Payload>("/api/settings", { method: "PUT", json: { geminiApiKey: value } });
-      setData(d);
-      setKeyDraft("");
-      if (!value) return setKeyState({ busy: false, message: "Chave removida." });
-      const test = await api<{ ok: boolean; message?: string; models?: { id: string; available: boolean }[] }>("/api/settings", { method: "POST" });
-      setKeyState({
-        busy: false,
-        ok: test.ok,
-        message: test.ok ? "Chave salva e funcionando. Gemini Free está pronto." : (test.message ?? "A chave não funcionou."),
-      });
-    } catch (err) {
-      setKeyState({ busy: false, message: (err as Error).message, ok: false });
-    }
-  };
-
   const freeDefault =
     form.providerId && data.providers.find((p) => p.id === form.providerId && !p.paid && p.available) ? form.providerId : data.defaultProvider;
 
   return (
     <div className="rise mt-10 sm:mt-14">
-      <Section title="Gemini Free" note="Tradução gratuita do Google, sem cartão. A chave fica só no servidor — nunca volta para o navegador.">
-        {data.gemini.hasKey ? (
-          <p className="text-[0.9375rem] text-ink">
-            Chave configurada <span className="num text-muted">{data.gemini.keyHint}</span>
-            {data.gemini.fromEnv && <span className="text-muted"> (variável de ambiente)</span>}
-          </p>
-        ) : (
-          <p className="text-[0.9375rem] text-ink-2">
-            Crie uma chave gratuita em{" "}
-            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="link text-ink">
-              aistudio.google.com/apikey
-            </a>{" "}
-            (botão “Create API key”) e cole aqui.
-          </p>
-        )}
-        {!data.gemini.fromEnv && (
-          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-            <label className="block flex-1">
-              <span className="label">{data.gemini.hasKey ? "Trocar chave" : "Chave da API"}</span>
-              <input
-                type="password"
-                autoComplete="off"
-                spellCheck={false}
-                value={keyDraft}
-                onChange={(e) => setKeyDraft(e.target.value)}
-                placeholder="Cole a chave aqui"
-                className="mt-1.5 w-full border-b border-rule-strong bg-transparent py-2 text-[1rem] text-ink outline-none focus:border-ink"
-              />
-            </label>
-            <Button onClick={() => saveKey(keyDraft)} disabled={keyState.busy || !keyDraft.trim()} className="h-11 px-5 text-[0.875rem]">
-              {keyState.busy ? "Testando…" : "Salvar e testar"}
-            </Button>
-          </div>
-        )}
-        {keyState.message && <p className={`mt-3 text-[0.875rem] ${keyState.ok === false ? "text-accent" : "text-ok"}`}>{keyState.message}</p>}
-        {data.gemini.hasKey && !data.gemini.fromEnv && (
-          <button onClick={() => saveKey("")} className="link mt-3 text-[0.8125rem] text-muted hover:text-ink">
-            Remover chave
-          </button>
-        )}
-        <div className="mt-6">
-          <span className="label">Modelo</span>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {data.gemini.models.map((m) => {
-              const sel = (form.geminiModel ?? data.gemini.models[0].id) === m.id;
-              return (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => update({ geminiModel: m.id })}
-                  className={`rounded-xl border px-4 py-3 text-left transition-colors active:bg-paper-2 ${sel ? "border-ink" : "border-rule hover:border-rule-strong"}`}
-                >
-                  <span className="block text-[0.9375rem] text-ink">{m.label}</span>
-                  <span className="mt-0.5 block text-[0.8125rem] text-muted">{m.note}</span>
-                </button>
-              );
-            })}
-          </div>
+      <Section
+        title="Créditos grátis de hoje"
+        note="Serviços de IA gratuitos, sem cartão. Cada um tem a própria cota diária: quando a de um acaba, você pode continuar com outro. As chaves ficam só no servidor."
+      >
+        <div className="space-y-3">
+          {data.free.map((s) => (
+            <FreeServiceCard key={s.id} service={s} onChange={(d) => setData(d as Payload)} />
+          ))}
         </div>
       </Section>
 
       <Section
-        title="Provedores"
-        note="O provedor é escolhido em cada livro, antes de começar. Provedores pagos sempre pedem confirmação e nunca são usados automaticamente."
+        title="Todos os serviços"
+        note="O serviço é escolhido em cada livro, antes de começar. Serviços pagos sempre pedem confirmação e nunca são usados automaticamente."
       >
         <ul className="divide-y divide-rule border-y border-rule">
-          {data.providers.map((p) => (
-            <li key={p.id} className="flex items-baseline justify-between gap-4 py-3">
-              <span className="min-w-0">
-                <span className="block text-[0.9375rem] text-ink">
-                  {p.label}
-                  {p.id === freeDefault && <span className="ml-2 text-[0.75rem] text-muted">padrão</span>}
+          {data.providers
+            .filter((p) => !p.paid || p.available)
+            .map((p) => (
+              <li key={p.id} className="flex items-baseline justify-between gap-4 py-3">
+                <span className="min-w-0">
+                  <span className="block text-[0.9375rem] text-ink">
+                    {p.label}
+                    {p.id === freeDefault && <span className="ml-2 text-[0.75rem] text-muted">padrão</span>}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[0.8125rem] text-muted">{p.available ? p.model : p.hint}</span>
                 </span>
-                <span className="mt-0.5 block truncate text-[0.8125rem] text-muted">{p.available ? p.model : p.hint}</span>
-              </span>
-              <span className={`shrink-0 text-[0.75rem] ${p.paid ? "text-accent" : "text-ok"}`}>
-                {p.paid ? "Pago" : "Gratuito"} {p.available ? "" : "· não configurado"}
-              </span>
-            </li>
-          ))}
+                <span className={`shrink-0 text-[0.75rem] ${p.paid ? "text-accent" : "text-ok"}`}>
+                  {p.paid ? "Pago" : "Gratuito"} {p.available ? "" : "· não configurado"}
+                </span>
+              </li>
+            ))}
         </ul>
       </Section>
 

@@ -84,45 +84,51 @@ export class OpenAICompatibleClient implements LLMClient {
       throw new ProviderError(`O provedor respondeu com erro ${res.status}: ${detail.slice(0, 300)}`, { fatal: res.status === 400 });
     }
 
-    let text = "";
-    let finish = "";
-    let usage = { inputTokens: 0, outputTokens: 0 };
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    for (;;) {
-      const { value, done } = await reader.read();
-      if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let nl: number;
-      while ((nl = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, nl).trim();
-        buffer = buffer.slice(nl + 1);
-        if (!line.startsWith("data:")) continue;
-        const data = line.slice(5).trim();
-        if (data === "[DONE]") continue;
-        try {
-          const json = JSON.parse(data);
-          const choice = json.choices?.[0];
-          if (choice?.delta?.content) text += choice.delta.content;
-          if (choice?.finish_reason) finish = choice.finish_reason;
-          if (json.usage) usage = { inputTokens: json.usage.prompt_tokens ?? 0, outputTokens: json.usage.completion_tokens ?? 0 };
-          if (json.error) throw new ProviderError(`Erro do provedor: ${json.error.message ?? "desconhecido"}`, { fatal: false });
-        } catch (err) {
-          if (err instanceof ProviderError) throw err;
-          /* linha incompleta: ignora */
-        }
+    return readChatStream(res.body);
+  }
+}
+
+/** Lê uma resposta em streaming (SSE) no formato “chat completions”. */
+export async function readChatStream(body: ReadableStream<Uint8Array>): Promise<LLMResponse> {
+  let text = "";
+  let finish = "";
+  let usage = { inputTokens: 0, outputTokens: 0 };
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (!line.startsWith("data:")) continue;
+      const data = line.slice(5).trim();
+      if (data === "[DONE]") continue;
+      try {
+        const json = JSON.parse(data);
+        const choice = json.choices?.[0];
+        if (choice?.delta?.content) text += choice.delta.content;
+        if (choice?.finish_reason) finish = choice.finish_reason;
+        const u = json.usage ?? json.x_groq?.usage;
+        if (u) usage = { inputTokens: u.prompt_tokens ?? 0, outputTokens: u.completion_tokens ?? 0 };
+        if (json.error) throw new ProviderError(`Erro do provedor: ${json.error.message ?? "desconhecido"}`, { fatal: false, code: "server" });
+      } catch (err) {
+        if (err instanceof ProviderError) throw err;
+        /* linha incompleta: ignora */
       }
     }
-
-    // modelos de “raciocínio” às vezes incluem <think>…</think> no texto
-    text = text.replace(/<think>[\s\S]*?<\/think>/g, "");
-    return {
-      text,
-      stopReason: finish === "length" ? "max_tokens" : finish === "content_filter" ? "refusal" : finish === "stop" || !finish ? "end" : "other",
-      usage,
-    };
   }
+
+  // modelos de “raciocínio” às vezes incluem <think>…</think> no texto
+  text = text.replace(/<think>[\s\S]*?<\/think>/g, "");
+  return {
+    text,
+    stopReason: finish === "length" ? "max_tokens" : finish === "content_filter" ? "refusal" : finish === "stop" || !finish ? "end" : "other",
+    usage,
+  };
 }
 
 function wait(ms: number, signal?: AbortSignal) {

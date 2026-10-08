@@ -30,7 +30,7 @@ function activityText(book: BookView, now: number | null): string | undefined {
   const a = book.activity;
   // o relógio só existe no navegador (evita diferença entre servidor e cliente)
   if (!a || now === null) return undefined;
-  const name = book.provider?.id === "gemini" ? "Gemini" : (PROVIDER_LABEL[book.provider?.id ?? ""] ?? "provedor");
+  const name = book.provider?.id === "gemini" ? "Gemini" : (PROVIDER_LABEL[book.provider?.id ?? ""] ?? "serviço");
   if (a.kind === "waiting" && a.until) {
     return `Aguardando o limite por minuto do ${name}. Continua sozinho em ${seconds(Date.parse(a.until) - now)}.`;
   }
@@ -77,7 +77,10 @@ function headline(book: BookView, now: number | null): { title: string; sub?: st
     }
     case "paused":
       if (book.stopCode === "quota")
-        return { title: "Limite gratuito atingido.", sub: "A tradução pode ser continuada quando a cota estiver disponível." };
+        return {
+          title: "Limite gratuito atingido.",
+          sub: "A tradução pode ser continuada quando a cota estiver disponível — ou agora, com outro serviço gratuito escolhido abaixo. Tudo está salvo.",
+        };
       return book.stopCode === "credits"
         ? { title: "Tradução pausada: sem créditos.", sub: book.error }
         : { title: "Tradução pausada.", sub: book.error ?? "Continue quando quiser, de onde parou." };
@@ -98,7 +101,14 @@ const STATUS_TEXT: Record<string, string> = {
   ready: "Não iniciado",
 };
 
-const PROVIDER_LABEL: Record<string, string> = { gemini: "Gemini Free", anthropic: "Anthropic", openai: "OpenAI", demo: "Demonstração" };
+const PROVIDER_LABEL: Record<string, string> = {
+  gemini: "Gemini Free",
+  github: "GitHub Models",
+  groq: "Groq",
+  anthropic: "Anthropic",
+  openai: "OpenAI",
+  demo: "Demonstração",
+};
 
 export function ProgressPanel({
   book,
@@ -190,7 +200,7 @@ export function ProgressPanel({
 
       {!running && (
         <div className="mt-7">
-          <ProviderPicker bookId={book.id} preferred={book.provider?.id} onChange={setChoice} />
+          <ProviderPicker bookId={book.id} onChange={setChoice} />
         </div>
       )}
 

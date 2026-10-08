@@ -17,7 +17,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { config } from "@/lib/config";
+import { config, type ProviderSettings } from "@/lib/config";
 import type { BookMeta, DocContent, GlossaryEntry } from "@/types/book";
 import { KeyedMutex } from "@/utils/async";
 
@@ -37,14 +37,14 @@ export function isValidDocId(id: string): boolean {
   return DOC_RE.test(id);
 }
 
-async function writeAtomic(file: string, data: string | Uint8Array) {
+export async function writeAtomic(file: string, data: string | Uint8Array) {
   await fs.mkdir(path.dirname(file), { recursive: true });
   const tmp = `${file}.${randomUUID().slice(0, 8)}.tmp`;
   await fs.writeFile(tmp, data);
   await fs.rename(tmp, file);
 }
 
-async function readJson<T>(file: string): Promise<T | null> {
+export async function readJson<T>(file: string): Promise<T | null> {
   try {
     return JSON.parse(await fs.readFile(file, "utf8")) as T;
   } catch (err) {
@@ -211,11 +211,9 @@ class BookStore {
 
 /* ---- preferências ---- */
 
-export interface Settings {
+/** As chaves gratuitas (Gemini, GitHub, Groq) ficam só no servidor, em data/settings.json. */
+export interface Settings extends ProviderSettings {
   providerId?: string;
-  /** chave gratuita do Gemini (fica só no servidor, em data/settings.json) */
-  geminiApiKey?: string;
-  geminiModel?: string;
   targetLanguage: string;
   dialogueStyle: "target" | "source";
   deepContext: boolean;

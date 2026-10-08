@@ -1,11 +1,13 @@
-import { config, geminiApiKey, providerConfigs, type ProviderId, type ProviderSettings } from "@/lib/config";
+import { config, geminiApiKey, githubToken, groqApiKey, providerConfigs, type ProviderId, type ProviderSettings } from "@/lib/config";
 import type { TranslationProvider } from "./translation-provider";
 import { LLMTranslationProvider } from "./llm-provider";
 import { DemoTranslationProvider } from "./demo-provider";
 import { AnthropicClient } from "./llm/anthropic";
 import { GeminiClient } from "./llm/gemini";
+import { FreeOpenAIClient } from "./llm/free-openai";
 import { OpenAICompatibleClient } from "./llm/openai-compatible";
-import { ProviderError, type Effort } from "./llm/types";
+import { ProviderError, type Effort, type LLMClient, type LLMRequest } from "./llm/types";
+import { isFreeProvider, recordExhausted, recordRequest } from "@/services/quota/usage";
 
 export type { TranslationProvider } from "./translation-provider";
 
@@ -25,10 +27,36 @@ export function createProvider(id: string, settings?: ProviderSettings): Transla
   switch (cfg.id as ProviderId) {
     case "gemini":
       // pedidos grandes e um de cada vez: poucos pedidos por dia no nível gratuito
-      return new LLMTranslationProvider(new GeminiClient(cfg.model, geminiApiKey(settings)), {
+      return new LLMTranslationProvider(counted(new GeminiClient(cfg.model, geminiApiKey(settings))), {
         paid: false,
         limits: { batchChars: Number(process.env.GEMINI_BATCH_CHARS) || 24000, concurrency: 1 },
       });
+    case "github":
+      // nível gratuito: até ~8 mil tokens de entrada e 4 mil de saída por pedido
+      return new LLMTranslationProvider(
+        counted(
+          new FreeOpenAIClient("github", cfg.model, githubToken(settings), {
+            label: "GitHub Models",
+            baseUrl: "https://models.github.ai/inference",
+            maxOutputTokens: 4000,
+            headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
+          }),
+        ),
+        { paid: false, limits: { batchChars: Number(process.env.GITHUB_BATCH_CHARS) || 8000, concurrency: 1 } },
+      );
+    case "groq":
+      // o limite gratuito por minuto conta entrada + saída: pedidos menores
+      return new LLMTranslationProvider(
+        counted(
+          new FreeOpenAIClient("groq", cfg.model, groqApiKey(settings), {
+            label: "Groq",
+            baseUrl: "https://api.groq.com/openai/v1",
+            maxOutputTokens: 4000,
+            dailyRequestHeaders: true,
+          }),
+        ),
+        { paid: false, limits: { batchChars: Number(process.env.GROQ_BATCH_CHARS) || 5000, concurrency: 1 } },
+      );
     case "anthropic":
       return new LLMTranslationProvider(new AnthropicClient(cfg.model, cfg.analysisModel, effort()), {
         paid: true,
@@ -48,4 +76,24 @@ export function createProvider(id: string, settings?: ProviderSettings): Transla
     default:
       return new DemoTranslationProvider();
   }
+}
+
+/** Conta os pedidos de um serviço gratuito (“créditos grátis de hoje”) e anota quando a cota acaba. */
+function counted(client: LLMClient): LLMClient {
+  const id = client.providerId;
+  if (!isFreeProvider(id)) return client;
+  return {
+    providerId: id,
+    model: client.model,
+    async complete(req: LLMRequest) {
+      try {
+        const res = await client.complete(req);
+        await recordRequest(id, client.model, res.usage, res.rateLimit).catch(() => {});
+        return res;
+      } catch (err) {
+        if (err instanceof ProviderError && err.code === "quota") await recordExhausted(id, client.model, err.retryAt).catch(() => {});
+        throw err;
+      }
+    },
+  };
 }

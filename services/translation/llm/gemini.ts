@@ -45,6 +45,20 @@ export function parseQuota(body: GeminiErrorBody): QuotaInfo {
   return { daily, retryMs };
 }
 
+/** A cota diária do Gemini volta à meia-noite do horário do Pacífico. */
+export function nextPacificMidnight(now = Date.now()): number {
+  const fmt = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles",
+    hour12: false,
+    hour: "numeric",
+    minute: "numeric",
+    second: "numeric",
+  });
+  const parts = Object.fromEntries(fmt.formatToParts(new Date(now)).map((p) => [p.type, p.value]));
+  const elapsed = ((Number(parts.hour) % 24) * 3600 + Number(parts.minute) * 60 + Number(parts.second)) * 1000;
+  return now - elapsed + 24 * 3600 * 1000;
+}
+
 export const FREE_LIMIT_MESSAGE = "Limite gratuito atingido. A tradução pode ser continuada quando a cota estiver disponível.";
 
 export class GeminiClient implements LLMClient {
@@ -101,7 +115,11 @@ export class GeminiClient implements LLMClient {
           await sleep(wait, req.signal);
           continue;
         }
-        throw new ProviderError(FREE_LIMIT_MESSAGE, { fatal: true, code: "quota" });
+        throw new ProviderError(FREE_LIMIT_MESSAGE, {
+          fatal: true,
+          code: "quota",
+          retryAt: q.daily ? nextPacificMidnight() : Date.now() + (q.retryMs ?? 60_000),
+        });
       }
       if (res.status === 400 && /api key not valid|API_KEY_INVALID/i.test(message)) {
         throw new ProviderError("A chave do Gemini foi recusada. Confira a chave em Ajustes.", { fatal: true, code: "auth" });
@@ -113,7 +131,7 @@ export class GeminiClient implements LLMClient {
         throw new ProviderError(`O modelo “${this.model}” não está disponível para a sua chave.`, { fatal: true, code: "model" });
       }
       if (res.status === 402 || CREDIT_RE.test(message)) {
-        throw new ProviderError(FREE_LIMIT_MESSAGE, { fatal: true, code: "quota" });
+        throw new ProviderError(FREE_LIMIT_MESSAGE, { fatal: true, code: "quota", retryAt: nextPacificMidnight() });
       }
       if (res.status >= 500 && attempt < 3) {
         const wait = 15_000 * (attempt + 1);

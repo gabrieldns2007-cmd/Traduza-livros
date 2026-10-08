@@ -23,6 +23,8 @@ export interface LLMResponse {
   text: string;
   stopReason: "end" | "max_tokens" | "refusal" | "other";
   usage: { inputTokens: number; outputTokens: number };
+  /** pedidos restantes no dia, quando o serviço informa */
+  rateLimit?: { remaining: number; limit: number };
 }
 
 export interface LLMClient {
@@ -40,11 +42,14 @@ export type ProviderErrorCode = "quota" | "credits" | "auth" | "model" | "rate_l
 export class ProviderError extends Error {
   readonly fatal: boolean;
   readonly code: ProviderErrorCode;
-  constructor(message: string, opts: { fatal: boolean; cause?: unknown; code?: ProviderErrorCode }) {
+  /** quando a cota volta (ms desde 1970), se o provedor informou */
+  readonly retryAt?: number;
+  constructor(message: string, opts: { fatal: boolean; cause?: unknown; code?: ProviderErrorCode; retryAt?: number }) {
     super(message, { cause: opts.cause });
     this.name = "ProviderError";
     this.fatal = opts.fatal;
     this.code = opts.code ?? "other";
+    this.retryAt = opts.retryAt;
   }
 }
 

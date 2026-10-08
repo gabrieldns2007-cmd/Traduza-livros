@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/client";
+import { quotaText, type QuotaInfo } from "@/lib/quota-format";
 
 export interface ProviderOption {
   id: string;
@@ -12,6 +13,7 @@ export interface ProviderOption {
   paid: boolean;
   hint?: string;
   estimate: { low: number; high: number; known: boolean } | null;
+  quota: QuotaInfo | null;
 }
 
 export interface ProviderChoice {
@@ -31,7 +33,7 @@ function usd(v: number) {
  * um provedor pago mostra “Esta tradução pode gerar custos”, a estimativa e
  * só libera o botão depois da confirmação explícita.
  */
-export function ProviderPicker({ bookId, preferred, onChange }: { bookId: string; preferred?: string; onChange: (c: ProviderChoice) => void }) {
+export function ProviderPicker({ bookId, onChange }: { bookId: string; onChange: (c: ProviderChoice) => void }) {
   const [options, setOptions] = useState<ProviderOption[] | null>(null);
   const [selected, setSelected] = useState<string>("");
   const [confirmed, setConfirmed] = useState(false);
@@ -43,15 +45,14 @@ export function ProviderPicker({ bookId, preferred, onChange }: { bookId: string
       .then((d) => {
         if (!alive) return;
         setOptions(d.providers);
-        // padrão sempre gratuito; o provedor anterior só é pré-selecionado se for gratuito
-        const prev = d.providers.find((p) => p.id === preferred && p.available && !p.paid);
-        setSelected(prev?.id ?? d.defaultId);
+        // padrão sempre gratuito e com cota; o servidor já considera o serviço anterior do livro
+        setSelected(d.defaultId);
       })
       .catch((e) => alive && setError((e as Error).message));
     return () => {
       alive = false;
     };
-  }, [bookId, preferred]);
+  }, [bookId]);
 
   const current = options?.find((p) => p.id === selected);
   useEffect(() => {
@@ -62,7 +63,7 @@ export function ProviderPicker({ bookId, preferred, onChange }: { bookId: string
   if (error) return <p className="text-[0.875rem] text-accent">{error}</p>;
   if (!options) return <div className="h-24 animate-pulse rounded-xl bg-paper-2" aria-label="Carregando provedores" />;
 
-  const visible = options.filter((p) => p.available || p.id === "gemini");
+  const visible = options;
   return (
     <div>
       <span className="label">Provedor</span>
@@ -93,26 +94,42 @@ export function ProviderPicker({ bookId, preferred, onChange }: { bookId: string
                   <span className={`shrink-0 text-[0.75rem] ${p.paid ? "text-accent" : "text-ok"}`}>{p.paid ? "Pago" : "Gratuito"}</span>
                 </span>
                 <span className="mt-0.5 block text-[0.8125rem] text-muted">{p.available ? p.model : p.hint}</span>
+                {(() => {
+                  const q = quotaText(p.quota);
+                  return q ? (
+                    <span
+                      className={`mt-0.5 block text-[0.8125rem] ${q.tone === "out" ? "text-accent" : q.tone === "low" ? "text-ink-2" : "text-ok"}`}
+                    >
+                      {q.text}
+                    </span>
+                  ) : null;
+                })()}
               </span>
             </button>
           );
         })}
       </div>
 
-      {current && !current.available && current.id === "gemini" && (
+      {current && !current.available && !current.paid && (
         <p className="mt-3 text-[0.8125rem] text-ink-2">
-          Para usar o Gemini gratuito,{" "}
+          Para usar o {current.label} de graça,{" "}
           <Link href="/configuracoes" className="link text-ink">
-            adicione sua chave em Ajustes
+            adicione a chave em Ajustes
           </Link>
           .
         </p>
       )}
 
-      {current?.id === "gemini" && current.available && (
+      {current?.available && current.quota?.exhaustedUntil && (
+        <p className="mt-3 text-[0.8125rem] leading-relaxed text-accent">
+          A cota gratuita deste serviço acabou por hoje. Escolha outro serviço gratuito acima ou continue quando a cota voltar.
+        </p>
+      )}
+
+      {current && !current.paid && current.available && current.id !== "demo" && (
         <p className="mt-3 text-[0.8125rem] leading-relaxed text-muted">
-          Gratuito, sem cartão. Se o limite diário acabar, a tradução pausa e continua depois — nunca muda para um provedor pago. No nível gratuito o
-          Google pode usar o texto enviado para melhorar os produtos dele.
+          Gratuito, sem cartão. Se a cota do dia acabar, a tradução pausa e você continua depois ou com outro serviço gratuito — nunca muda sozinha
+          para um serviço pago.{current.id === "gemini" && " No nível gratuito o Google pode usar o texto enviado para melhorar os produtos dele."}
         </p>
       )}
 

@@ -10,7 +10,7 @@
  */
 import type { BookActivity, BookMeta } from "@/types/book";
 import { store, readSettings } from "@/lib/storage";
-import { defaultProviderId } from "@/lib/config";
+import { defaultProviderId, FREE_PROVIDERS } from "@/lib/config";
 import { toPlainText } from "@/lib/markup";
 import { mergeCandidates } from "@/services/glossary/glossary";
 import { createProvider, type TranslationProvider } from "@/services/translation";
@@ -41,7 +41,7 @@ class JobRunner {
     const pending = books.filter((b) => ACTIVE.includes(b.status)).sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
     for (const b of pending) {
       // provedor pago nunca recomeça sozinho: fica pausado até o usuário confirmar
-      const paid = b.provider && b.provider.id !== "gemini" && b.provider.id !== "demo";
+      const paid = b.provider && !(FREE_PROVIDERS as readonly string[]).includes(b.provider.id) && b.provider.id !== "demo";
       if (paid) {
         await store.update(b.id, (m) => {
           m.status = "paused";
@@ -333,7 +333,7 @@ class JobRunner {
     let total = 0;
     const substantial = meta.chapters.filter((c) => c.wordCount >= 300);
     for (const ch of substantial.length ? substantial : meta.chapters) {
-      if (total >= 16000) break;
+      if (total >= Math.min(16000, provider.limits.batchChars)) break;
       const doc = await store.readDoc(bookId, ch.docId);
       const text = doc.segments
         .slice(ch.start, ch.end)
