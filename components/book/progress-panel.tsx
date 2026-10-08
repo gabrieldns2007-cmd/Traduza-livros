@@ -1,13 +1,58 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { BookView } from "@/lib/api";
 import { chapterLabel, formatDuration, formatNumber } from "@/lib/format";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
 import { ProviderPicker, type ProviderChoice } from "./provider-picker";
 
-function headline(book: BookView): { title: string; sub?: string; detail?: string } {
+/** [102, 103, 104, 110, 111] → ["102 a 104", "110", "111"] */
+function ranges(nums: number[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < nums.length;) {
+    let j = i;
+    while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++;
+    if (j - i >= 2) out.push(`${nums[i]} a ${nums[j]}`);
+    else for (let k = i; k <= j; k++) out.push(`${nums[k]}`);
+    i = j + 1;
+  }
+  return out;
+}
+
+function seconds(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000));
+  return s < 60 ? `${s} s` : `${Math.floor(s / 60)} min${s % 60 ? ` ${s % 60} s` : ""}`;
+}
+
+/** O que está acontecendo agora, para a pessoa saber que não travou. */
+function activityText(book: BookView, now: number | null): string | undefined {
+  const a = book.activity;
+  // o relógio só existe no navegador (evita diferença entre servidor e cliente)
+  if (!a || now === null) return undefined;
+  const name = book.provider?.id === "gemini" ? "Gemini" : (PROVIDER_LABEL[book.provider?.id ?? ""] ?? "provedor");
+  if (a.kind === "waiting" && a.until) {
+    return `Aguardando o limite por minuto do ${name}. Continua sozinho em ${seconds(Date.parse(a.until) - now)}.`;
+  }
+  const sent = `Pedido enviado ao ${name} há ${seconds(now - Date.parse(a.since))}.`;
+  return a.chapters && a.chapters > 1
+    ? `${sent} ${a.chapters} capítulos curtos vão juntos neste pedido; o progresso aparece quando ele responder.`
+    : `${sent} O progresso aparece quando ele responder.`;
+}
+
+/** Hora atual, atualizada a cada segundo enquanto houver atividade. */
+function useNow(ticking: boolean): number | null {
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+    if (!ticking) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [ticking]);
+  return now;
+}
+
+function headline(book: BookView, now: number | null): { title: string; sub?: string; detail?: string } {
   const activeIdx = book.chapters.map((c, i) => (book.activeChapterIds.includes(c.id) ? i : -1)).filter((i) => i >= 0);
   const first = activeIdx.length ? book.chapters[activeIdx[0]] : null;
   const firstTitle = first ? chapterLabel(first.title) : "";
@@ -23,12 +68,12 @@ function headline(book: BookView): { title: string; sub?: string; detail?: strin
     case "translating": {
       if (book.percent >= 90) return { title: "Quase lá.", detail };
       if (!activeIdx.length) return { title: "Traduzindo…" };
-      const nums = activeIdx.map((i) => i + 1);
+      const parts = ranges(activeIdx.map((i) => i + 1));
       const title =
-        nums.length === 1
-          ? `Traduzindo o capítulo ${nums[0]}.`
-          : `Traduzindo os capítulos ${nums.slice(0, -1).join(", ")} e ${nums[nums.length - 1]}.`;
-      return { title, detail };
+        parts.length === 1 && !parts[0].includes(" ")
+          ? `Traduzindo o capítulo ${parts[0]}.`
+          : `Traduzindo os capítulos ${parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} e ${parts[parts.length - 1]}`}.`;
+      return { title, detail, sub: activityText(book, now) };
     }
     case "paused":
       if (book.stopCode === "quota")
@@ -65,7 +110,8 @@ export function ProgressPanel({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [choice, setChoice] = useState<ProviderChoice | null>(null);
-  const h = headline(book);
+  const now = useNow(Boolean(book.activity));
+  const h = headline(book, now);
   const doneChapters = book.chapters.filter((c) => c.status === "done").length;
   const running = book.status === "queued" || book.status === "analyzing" || book.status === "translating";
 

@@ -23,7 +23,7 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
   const refresh = useCallback(async () => {
     try {
       const { book: b } = await api<{ book: BookView }>(`/api/books/${book.id}`);
-      setBook(b);
+      if (b) setBook(b);
     } catch {
       /* rede instável: tenta de novo no próximo ciclo */
     }
@@ -59,7 +59,7 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
 
   const act = async (action: "pause" | "resume" | "retry-failed", extra?: { providerId?: string; confirmCost?: boolean }) => {
     const { book: b } = await api<{ book: BookView }>(`/api/books/${book.id}/translate`, { method: "POST", json: { action, ...extra } });
-    setBook(b);
+    if (b) setBook(b);
   };
 
   const remove = async () => {

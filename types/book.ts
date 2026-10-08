@@ -101,6 +101,16 @@ export interface TranslationOptions {
   deepContext: boolean;
 }
 
+/** O que a tradução está fazendo agora (só em memória, para a tela). */
+export interface BookActivity {
+  /** "request": pedido enviado, aguardando resposta; "waiting": esperando um limite do provedor */
+  kind: "request" | "waiting";
+  since: string;
+  until?: string;
+  /** capítulos incluídos no pedido */
+  chapters?: number;
+}
+
 export interface BookProgress {
   translatedWords: number;
   translatedSegments: number;

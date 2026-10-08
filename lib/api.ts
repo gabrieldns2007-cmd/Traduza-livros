@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type { BookMeta, BookSummary } from "@/types/book";
+import type { BookActivity, BookMeta, BookSummary } from "@/types/book";
 import { store, isValidBookId } from "@/lib/storage";
 import { jobRunner } from "@/services/processing/job-runner";
 
@@ -39,6 +39,8 @@ export type BookView = BookMeta & {
   /** capítulos concluídos e de onde a tradução continua (índice 0-based, -1 se terminou) */
   doneChapters: number;
   resumeIndex: number;
+  /** o que está acontecendo agora (pedido em andamento, espera de limite) */
+  activity: BookActivity | null;
 };
 
 export function viewOf(meta: BookMeta): BookView {
@@ -50,6 +52,7 @@ export function viewOf(meta: BookMeta): BookView {
     isDemo: meta.provider?.id === "demo",
     doneChapters: meta.chapters.filter((c) => c.status === "done").length,
     resumeIndex: meta.chapters.findIndex((c) => c.status !== "done"),
+    activity: jobRunner.activity(meta.id),
   };
 }
 

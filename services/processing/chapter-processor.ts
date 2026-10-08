@@ -9,7 +9,7 @@
  * resumos e 3 parágrafos anteriores; nomes novos vêm junto da tradução (sem
  * chamada extra por capítulo); nada já traduzido é reenviado.
  */
-import type { BookMeta, ChapterMeta, DocContent, Segment } from "@/types/book";
+import type { BookActivity, BookMeta, ChapterMeta, DocContent, Segment } from "@/types/book";
 import { store } from "@/lib/storage";
 import { appendMissingVoids, repairMarkup, tagKeys, toPlainText } from "@/lib/markup";
 import { languageEnglishName } from "@/lib/languages";
@@ -28,6 +28,8 @@ export interface ProcessorHooks {
   /** serializa a análise opcional de capítulos */
   analysisLock: <T>(fn: () => Promise<T>) => Promise<T>;
   signal: AbortSignal;
+  /** o que está acontecendo agora (pedido em andamento, espera de limite) */
+  onActivity?: (activity: BookActivity | null) => void;
 }
 
 export function bookContext(meta: BookMeta): BookContext {
@@ -177,6 +179,8 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
 
   const attempt = async (its: Item[], strict: boolean, depth: number): Promise<void> => {
     const segments: BatchSegment[] = its.map((it) => ({ id: idOf.get(it)!, text: it.seg.src }));
+    const chapterCount = new Set(its.map((it) => it.chapter.id)).size;
+    hooks.onActivity?.({ kind: "request", since: new Date().toISOString(), chapters: chapterCount });
     const out = await provider.translateBatch({
       book: { ...book, profile: meta.profile },
       glossary: relevant,
@@ -187,6 +191,12 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
       segments,
       strict,
       signal: hooks.signal,
+      onWait: (ms) => {
+        const now = Date.now();
+        hooks.onActivity?.({ kind: "waiting", since: new Date(now).toISOString(), until: new Date(now + ms).toISOString() });
+        // depois da espera o mesmo pedido é reenviado
+        setTimeout(() => hooks.onActivity?.({ kind: "request", since: new Date().toISOString(), chapters: chapterCount }), ms).unref?.();
+      },
     });
     await hooks.onUsage(out.usage);
     if (out.newTerms?.length) await store.updateGlossary(bookId, (entries) => mergeCandidates(entries, out.newTerms!));
@@ -233,9 +243,13 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
       if (transient > (isRate ? 6 : 3)) throw err;
       const wait = Math.min(15000 * 2 ** (transient - 1), 5 * 60_000);
       console.warn(`[processor] erro temporário (tentativa ${transient}); aguardando ${wait / 1000}s`, err);
+      const now = Date.now();
+      hooks.onActivity?.({ kind: "waiting", since: new Date(now).toISOString(), until: new Date(now + wait).toISOString() });
       await sleep(wait, hooks.signal);
     }
   }
+
+  hooks.onActivity?.(null);
 
   // grava imediatamente, arquivo por arquivo (relê dentro do lock para não perder edições)
   const perChapter = new Map<string, { words: number; segments: number; failed: number }>();

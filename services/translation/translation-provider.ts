@@ -72,6 +72,8 @@ export interface BatchInput {
   /** reforço quando é uma nova tentativa (tags perdidas, segmentos faltando) */
   strict?: boolean;
   signal?: AbortSignal;
+  /** chamado quando o provedor precisa esperar um limite (ms) */
+  onWait?: (ms: number) => void;
 }
 
 export interface BatchOutput {

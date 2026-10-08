@@ -115,6 +115,7 @@ export class LLMTranslationProvider implements TranslationProvider {
       // inclui folga para o raciocínio do modelo (thinking conta no limite)
       maxTokens: Math.min(64000, Math.max(16000, Math.ceil(sourceChars * 1.2) + 8000)),
       signal: input.signal,
+      onWait: input.onWait,
     });
     return {
       translations: parseSegments(res.text),

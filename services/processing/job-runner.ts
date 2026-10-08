@@ -8,7 +8,7 @@
  *   - se o servidor reiniciar, os livros em andamento voltam para a fila e
  *     continuam de onde pararam.
  */
-import type { BookMeta } from "@/types/book";
+import type { BookActivity, BookMeta } from "@/types/book";
 import { store, readSettings } from "@/lib/storage";
 import { defaultProviderId } from "@/lib/config";
 import { toPlainText } from "@/lib/markup";
@@ -28,6 +28,8 @@ class JobRunner {
   /** livros retomados enquanto a execução anterior ainda estava terminando */
   private restart = new Set<string>();
   private analysisMutex = new KeyedMutex();
+  /** atividade atual de cada livro (pedido em andamento, espera de limite) */
+  private activities = new Map<string, BookActivity>();
   /** fábrica do provedor (substituível em testes) */
   providerFactory: (id: string, settings?: Awaited<ReturnType<typeof readSettings>>) => TranslationProvider = createProvider;
 
@@ -63,6 +65,10 @@ class JobRunner {
 
   isRunning(bookId: string) {
     return this.current?.bookId === bookId;
+  }
+
+  activity(bookId: string): BookActivity | null {
+    return this.activities.get(bookId) ?? null;
   }
 
   queuePosition(bookId: string) {
@@ -203,6 +209,10 @@ class JobRunner {
         });
       },
       onChapterSaved: (chapterId: string) => this.finishChapter(bookId, chapterId, provider),
+      onActivity: (a: BookActivity | null) => {
+        if (a) this.activities.set(bookId, a);
+        else this.activities.delete(bookId);
+      },
     };
 
     try {
@@ -304,6 +314,7 @@ class JobRunner {
         for (const c of m.chapters) if (c.status === "translating" || c.status === "analyzing") c.status = "pending";
       });
     } finally {
+      this.activities.delete(bookId);
       signal.removeEventListener("abort", forward);
       if (await store.get(bookId)) await store.flush(bookId);
     }
