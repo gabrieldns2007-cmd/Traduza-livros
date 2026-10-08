@@ -12,7 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { ArrowRight, Chevron } from "@/components/ui/icons";
 import { ProviderPicker, type ProviderChoice } from "@/components/book/provider-picker";
-import { Steps } from "@/components/ui/steps";
+import { COMMERCE_STEPS, Steps } from "@/components/ui/steps";
 import { PUBLIC_MODE } from "@/lib/mode";
 
 type Phase =
@@ -84,12 +84,17 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
       setPhase({ kind: "uploading", file, progress: 0 });
       try {
         const book = await uploadWithProgress(file, target, source, (progress) => setPhase({ kind: "uploading", file, progress }));
+        // compra de uma tradução: o próximo passo (idioma, preço e confirmação) fica na página do livro
+        if (!PUBLIC_MODE) {
+          router.push(`/livros/${book.id}`);
+          return;
+        }
         setPhase({ kind: "ready", file, book });
       } catch (err) {
         setPhase({ kind: "error", message: (err as Error).message });
       }
     },
-    [defaults.maxUploadMb, source, target],
+    [defaults.maxUploadMb, source, target, router],
   );
 
   const reset = async () => {
@@ -132,7 +137,11 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
 
   return (
     <div className="w-full">
-      <Steps current={phase.kind === "ready" ? 2 : 1} className="mb-6" />
+      {PUBLIC_MODE ? (
+        <Steps current={phase.kind === "ready" ? 2 : 1} className="mb-6" />
+      ) : (
+        <Steps steps={COMMERCE_STEPS} current={1} className="mb-6" />
+      )}
       <input
         ref={inputRef}
         type="file"

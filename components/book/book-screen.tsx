@@ -13,9 +13,9 @@ import { StartPanel } from "./start-panel";
 import { ChapterList } from "./chapter-list";
 import { GlossaryPanel } from "./glossary-panel";
 import { AboutBook } from "./about-book";
-import { RunCosts } from "./run-costs";
 import { PUBLIC_MODE } from "@/lib/mode";
-import { Steps } from "@/components/ui/steps";
+import { COMMERCE_STEPS, Steps } from "@/components/ui/steps";
+import { OrderPanel } from "@/components/commerce/order-panel";
 
 export function BookScreen({ initial, initialGlossary }: { initial: BookView; initialGlossary: GlossaryEntry[] }) {
   const router = useRouter();
@@ -95,10 +95,20 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
         )}
       </header>
 
-      <Steps current={book.status === "ready" ? 2 : 3} done={book.status === "done"} className="mt-8" />
+      {PUBLIC_MODE ? (
+        <Steps current={book.status === "ready" ? 2 : 3} done={book.status === "done"} className="mt-8" />
+      ) : (
+        // compra de uma tradução: Enviar → Confirmar → Tradução → Baixar
+        <Steps
+          steps={COMMERCE_STEPS}
+          current={book.status === "ready" ? 2 : book.status === "done" ? 4 : 3}
+          done={book.status === "done"}
+          className="mt-8"
+        />
+      )}
 
       <div className="mt-8 sm:mt-10">
-        {book.status === "ready" && <StartPanel book={book} onStarted={setBook} />}
+        {book.status === "ready" && (PUBLIC_MODE ? <StartPanel book={book} onStarted={setBook} /> : <OrderPanel book={book} onChange={setBook} />)}
         {(active || book.status === "paused" || book.status === "error") && <ProgressPanel book={book} onAction={act} />}
         {book.status === "done" && <DonePanel book={book} onChange={setBook} onRetry={() => act("retry-failed")} />}
       </div>
@@ -108,16 +118,14 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
           <ChapterList book={book} />
           <GlossaryPanel bookId={book.id} entries={glossary} onChange={setGlossary} live={active} />
           {book.profile && (book.profile.genre || book.profile.tone) && <AboutBook profile={book.profile} />}
-          {/* só no Verso de servidor próprio: quem vê é o dono, que paga os serviços */}
-          {!PUBLIC_MODE && book.runs && <RunCosts runs={book.runs} words={book.totals.words} />}
         </>
       )}
 
       <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-rule pt-6 text-[0.8125rem] text-muted">
         <span className="num">
           {book.originalFileName}
-          {book.provider && book.provider.id !== "demo" ? ` · ${book.provider.model}` : ""}
-          {book.usage.outputTokens > 0 ? ` · ${Math.round((book.usage.inputTokens + book.usage.outputTokens) / 1000)} mil tokens` : ""}
+          {PUBLIC_MODE && book.provider && book.provider.id !== "demo" ? ` · ${book.provider.model}` : ""}
+          {PUBLIC_MODE && book.usage.outputTokens > 0 ? ` · ${Math.round((book.usage.inputTokens + book.usage.outputTokens) / 1000)} mil tokens` : ""}
         </span>
         <button onClick={remove} className="link hover:text-accent">
           Excluir livro

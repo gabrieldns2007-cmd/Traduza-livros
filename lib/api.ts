@@ -1,6 +1,7 @@
 import type { BookActivity, BookMeta, BookSummary } from "@/types/book";
 import { store, isValidBookId } from "@/lib/storage";
 import { jobRunner } from "@/services/processing/job-runner";
+import { PUBLIC_MODE } from "@/lib/mode";
 
 export function json(data: unknown, status = 200) {
   // Response.json (padrão da web): o mesmo código responde no servidor e no navegador
@@ -45,7 +46,7 @@ export type BookView = BookMeta & {
 
 export function viewOf(meta: BookMeta): BookView {
   return {
-    ...meta,
+    ...(PUBLIC_MODE ? meta : forCustomer(meta)),
     percent: percentOf(meta),
     eta: etaSeconds(meta),
     queuePosition: jobRunner.queuePosition(meta.id),
@@ -53,6 +54,23 @@ export function viewOf(meta: BookMeta): BookView {
     doneChapters: meta.chapters.filter((c) => c.status === "done").length,
     resumeIndex: meta.chapters.findIndex((c) => c.status !== "done"),
     activity: jobRunner.activity(meta.id),
+  };
+}
+
+/**
+ * O cliente compra uma tradução, não um serviço de IA: no servidor, a resposta da
+ * API não leva qual serviço/modelo traduziu, tokens, custos nem mensagens de erro
+ * técnicas (isso fica no painel administrativo). Na versão pública a pessoa usa a
+ * própria chave e escolhe o serviço, então vê tudo.
+ */
+function forCustomer(meta: BookMeta): BookMeta {
+  const { runs: _runs, error: _error, ...rest } = meta;
+  return {
+    ...rest,
+    provider: meta.provider?.id === "demo" ? meta.provider : undefined,
+    usage: { inputTokens: 0, outputTokens: 0 },
+    chapters: meta.chapters.map(({ provider: _p, model: _m, ...c }) => c),
+    preview: meta.preview && { ...meta.preview, provider: { id: "", model: "" }, error: undefined },
   };
 }
 

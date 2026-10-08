@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Check } from "@/components/ui/icons";
 import { FreeServiceCard, type FreeService } from "./free-service-card";
 import { PUBLIC_MODE } from "@/lib/mode";
-import { BillingCard } from "@/components/billing/billing-card";
 
 interface Payload {
   settings: {
@@ -27,14 +26,23 @@ interface Payload {
   maxUploadMb: number;
 }
 
-export function SettingsForm() {
+/**
+ * Ajustes. Três públicos:
+ *  - cliente (Verso de servidor próprio): só preferências de tradução;
+ *  - administrador (/admin): serviços de IA, chaves e sistema;
+ *  - versão pública: preferências + a chave gratuita da própria pessoa.
+ */
+export function SettingsForm({ variant = "customer" }: { variant?: "customer" | "admin" }) {
+  const admin = variant === "admin";
+  const endpoint = admin ? "/api/admin/settings" : "/api/settings";
+  const showServices = PUBLIC_MODE || admin;
   const [data, setData] = useState<Payload | null>(null);
   const [form, setForm] = useState<Payload["settings"] | null>(null);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
-    api<Payload>("/api/settings")
+    api<Payload>(endpoint)
       .then((d) => {
         setData(d);
         setForm(d.settings);
@@ -53,7 +61,7 @@ export function SettingsForm() {
   const save = async () => {
     setStatus("saving");
     try {
-      const d = await api<Payload>("/api/settings", { method: "PUT", json: form });
+      const d = await api<Payload>(endpoint, { method: "PUT", json: form });
       setData(d);
       setForm(d.settings);
       setStatus("saved");
@@ -67,27 +75,23 @@ export function SettingsForm() {
 
   return (
     <div className="rise mt-10 sm:mt-14">
-      {!PUBLIC_MODE && (
-        <Section title="Plano e créditos">
-          <BillingCard />
+      {showServices && (
+        <Section
+          title={admin ? "Chaves dos serviços gratuitos (cota de hoje)" : "Sua chave gratuita (cota de hoje)"}
+          note={`Serviços de IA gratuitos, sem cartão. Cada um tem a própria cota diária: quando a de um acaba, você pode continuar com outro. ${PUBLIC_MODE ? "As chaves ficam só neste navegador." : "As chaves ficam só no servidor."}`}
+        >
+          <div className="space-y-3">
+            {data.free.map((s) => (
+              <FreeServiceCard key={s.id} service={s} endpoint={endpoint} onChange={(d) => setData(d as Payload)} />
+            ))}
+          </div>
         </Section>
       )}
 
-      <Section
-        title="Sua chave gratuita (cota de hoje)"
-        note={`Serviços de IA gratuitos, sem cartão. Cada um tem a própria cota diária: quando a de um acaba, você pode continuar com outro. ${PUBLIC_MODE ? "As chaves ficam só neste navegador." : "As chaves ficam só no servidor."}`}
-      >
-        <div className="space-y-3">
-          {data.free.map((s) => (
-            <FreeServiceCard key={s.id} service={s} onChange={(d) => setData(d as Payload)} />
-          ))}
-        </div>
-      </Section>
-
-      {data.providers.some((p) => p.paid && p.available) && (
+      {admin && data.providers.some((p) => p.paid && p.available) && (
         <Section
           title="Serviços pagos"
-          note="O serviço é escolhido em cada livro, antes de começar. Serviços pagos sempre pedem confirmação e nunca são usados automaticamente."
+          note="Um serviço pago só traduz a tradução Literária, e só quando você liga a venda dela acima. A Padrão nunca usa um serviço pago."
         >
           <ul className="divide-y divide-rule border-y border-rule">
             {data.providers
@@ -110,67 +114,78 @@ export function SettingsForm() {
         </Section>
       )}
 
-      <Section title="Padrões para novos livros">
-        <Select label="Traduzir para" value={form.targetLanguage} onChange={(e) => update({ targetLanguage: e.target.value })}>
-          {LANGUAGES.map((l) => (
-            <option key={l.code} value={l.code}>
-              {l.label}
-            </option>
-          ))}
-        </Select>
-        <div className="mt-7">
-          <span className="label">Diálogos</span>
-          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-            {(
-              [
-                ["target", "Padrão do idioma", "Ex.: travessão nos diálogos em português"],
-                ["source", "Como no original", "Mantém aspas, só ajusta o estilo"],
-              ] as const
-            ).map(([v, title, desc]) => (
-              <button
-                key={v}
-                onClick={() => update({ dialogueStyle: v })}
-                className={`rounded-xl border px-4 py-3 text-left transition-colors ${form.dialogueStyle === v ? "border-ink" : "border-rule hover:border-rule-strong"}`}
-              >
-                <span className="block text-[0.9375rem] text-ink">{title}</span>
-                <span className="mt-0.5 block text-[0.8125rem] text-muted">{desc}</span>
-              </button>
-            ))}
+      {!admin && (
+        <>
+          <Section title="Padrões para novos livros">
+            <Select label="Traduzir para" value={form.targetLanguage} onChange={(e) => update({ targetLanguage: e.target.value })}>
+              {LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>
+                  {l.label}
+                </option>
+              ))}
+            </Select>
+            <div className="mt-7">
+              <span className="label">Diálogos</span>
+              <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                {(
+                  [
+                    ["target", "Padrão do idioma", "Ex.: travessão nos diálogos em português"],
+                    ["source", "Como no original", "Mantém aspas, só ajusta o estilo"],
+                  ] as const
+                ).map(([v, title, desc]) => (
+                  <button
+                    key={v}
+                    onClick={() => update({ dialogueStyle: v })}
+                    className={`rounded-xl border px-4 py-3 text-left transition-colors ${form.dialogueStyle === v ? "border-ink" : "border-rule hover:border-rule-strong"}`}
+                  >
+                    <span className="block text-[0.9375rem] text-ink">{title}</span>
+                    <span className="mt-0.5 block text-[0.8125rem] text-muted">{desc}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mt-7">
+              <Switch
+                checked={form.deepContext}
+                onChange={(v) => update({ deepContext: v })}
+                label="Leitura atenta de cada capítulo"
+                description="Uma chamada extra por capítulo para resumir a história. Melhora a continuidade, mas gasta mais cota. Desligado por padrão."
+              />
+            </div>
+            <label className="mt-7 block">
+              <span className="label">Instruções padrão para o tradutor</span>
+              <textarea
+                value={form.instructions}
+                onChange={(e) => update({ instructions: e.target.value })}
+                rows={3}
+                placeholder="Ex.: prefira um registro natural do português brasileiro contemporâneo."
+                className="serif mt-2 w-full resize-y rounded-xl border border-rule bg-transparent px-4 py-3 text-[1.0625rem] leading-relaxed text-ink placeholder:text-muted/80 focus:border-ink-2 focus:outline-none"
+              />
+            </label>
+          </Section>
+
+          <div className="mt-10 flex items-center gap-4">
+            <Button onClick={save} disabled={status === "saving"}>
+              {status === "saving" ? "Salvando…" : "Salvar"}
+            </Button>
+            {status === "saved" && (
+              <span className="fade-in inline-flex items-center gap-1.5 text-[0.875rem] text-ok">
+                <Check /> Salvo
+              </span>
+            )}
+            {status === "error" && <span className="text-[0.875rem] text-accent">Não foi possível salvar.</span>}
           </div>
-        </div>
-        <div className="mt-7">
-          <Switch
-            checked={form.deepContext}
-            onChange={(v) => update({ deepContext: v })}
-            label="Leitura atenta de cada capítulo"
-            description="Uma chamada extra por capítulo para resumir a história. Melhora a continuidade, mas gasta mais cota. Desligado por padrão."
-          />
-        </div>
-        <label className="mt-7 block">
-          <span className="label">Instruções padrão para o tradutor</span>
-          <textarea
-            value={form.instructions}
-            onChange={(e) => update({ instructions: e.target.value })}
-            rows={3}
-            placeholder="Ex.: prefira um registro natural do português brasileiro contemporâneo."
-            className="serif mt-2 w-full resize-y rounded-xl border border-rule bg-transparent px-4 py-3 text-[1.0625rem] leading-relaxed text-ink placeholder:text-muted/80 focus:border-ink-2 focus:outline-none"
-          />
-        </label>
-      </Section>
+        </>
+      )}
 
-      <div className="mt-10 flex items-center gap-4">
-        <Button onClick={save} disabled={status === "saving"}>
-          {status === "saving" ? "Salvando…" : "Salvar"}
-        </Button>
-        {status === "saved" && (
-          <span className="fade-in inline-flex items-center gap-1.5 text-[0.875rem] text-ok">
-            <Check /> Salvo
-          </span>
-        )}
-        {status === "error" && <span className="text-[0.875rem] text-accent">Não foi possível salvar.</span>}
-      </div>
-
-      {PUBLIC_MODE ? (
+      {!PUBLIC_MODE && !admin ? (
+        <Section title="Privacidade">
+          <p className="text-[0.9375rem] leading-relaxed text-ink-2">
+            Seus livros são usados só para a tradução: não são publicados, compartilhados nem usados para outros fins. Você pode excluir um livro a
+            qualquer momento, na página dele.
+          </p>
+        </Section>
+      ) : PUBLIC_MODE ? (
         <Section title="Privacidade e arquivos">
           <p className="text-[0.9375rem] leading-relaxed text-ink-2">
             Seus livros, traduções e chaves ficam guardados só neste navegador. O texto vai direto do seu aparelho para o serviço de IA escolhido,
@@ -204,15 +219,17 @@ export function SettingsForm() {
         </Section>
       )}
 
-      <Section title="Kindle">
-        <p className="text-[0.9375rem] leading-relaxed text-ink-2">
-          O EPUB gerado é compatível com o Kindle. Para enviar: use o app Kindle no celular (Compartilhar → Kindle), arraste o arquivo em{" "}
-          <a href="https://www.amazon.com/sendtokindle" target="_blank" rel="noreferrer" className="link text-ink">
-            amazon.com/sendtokindle
-          </a>{" "}
-          ou mande por e-mail para o endereço do seu Kindle.
-        </p>
-      </Section>
+      {!admin && (
+        <Section title="Kindle">
+          <p className="text-[0.9375rem] leading-relaxed text-ink-2">
+            O EPUB gerado é compatível com o Kindle. Para enviar: use o app Kindle no celular (Compartilhar → Kindle), arraste o arquivo em{" "}
+            <a href="https://www.amazon.com/sendtokindle" target="_blank" rel="noreferrer" className="link text-ink">
+              amazon.com/sendtokindle
+            </a>{" "}
+            ou mande por e-mail para o endereço do seu Kindle.
+          </p>
+        </Section>
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 
-export function LoginForm() {
+export function LoginForm({ endpoint = "/api/auth", fallback = "/" }: { endpoint?: string; fallback?: string }) {
   const params = useSearchParams();
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -14,10 +14,10 @@ export function LoginForm() {
     e.preventDefault();
     setBusy(true);
     setError("");
-    const res = await fetch("/api/auth", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password }) });
+    const res = await fetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ password }) });
     if (res.ok) {
       const dest = params.get("de");
-      window.location.href = dest && dest.startsWith("/") && !dest.startsWith("//") ? dest : "/";
+      window.location.href = dest && dest.startsWith("/") && !dest.startsWith("//") ? dest : fallback;
     } else {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       setError(data.error ?? "Não foi possível entrar.");

@@ -41,14 +41,22 @@ const HOW_TO: Record<FreeService["id"], { url: string; site: string; steps: stri
   },
 };
 
-export function FreeServiceCard({ service, onChange }: { service: FreeService; onChange: (payload: unknown) => void }) {
+export function FreeServiceCard({
+  service,
+  onChange,
+  endpoint = "/api/settings",
+}: {
+  service: FreeService;
+  onChange: (payload: unknown) => void;
+  endpoint?: string;
+}) {
   const [draft, setDraft] = useState("");
   const [state, setState] = useState<{ busy: boolean; message: string; ok?: boolean }>({ busy: false, message: "" });
   const how = HOW_TO[service.id];
   const quota = quotaText(service.quota);
 
   const put = async (body: Record<string, string>) => {
-    const d = await api<unknown>("/api/settings", { method: "PUT", json: body });
+    const d = await api<unknown>(endpoint, { method: "PUT", json: body });
     onChange(d);
   };
 
@@ -58,7 +66,7 @@ export function FreeServiceCard({ service, onChange }: { service: FreeService; o
       await put({ [KEY_FIELD[service.id]]: value });
       setDraft("");
       if (!value) return setState({ busy: false, message: "Chave removida." });
-      const test = await api<{ ok: boolean; message?: string }>("/api/settings", { method: "POST", json: { service: service.id } });
+      const test = await api<{ ok: boolean; message?: string }>(endpoint, { method: "POST", json: { service: service.id } });
       setState({
         busy: false,
         ok: test.ok,

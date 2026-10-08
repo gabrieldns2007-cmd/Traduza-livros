@@ -106,6 +106,10 @@ export async function POST(request: Request, { params }: Ctx) {
   const { action } = parsed.data;
 
   if (action !== "pause" && jobRunner.isPreviewing(id)) return fail("Aguarde a prévia terminar.", 409);
+  // servidor próprio (serviço comercial): o cliente nunca escolhe o serviço de IA
+  // nem começa a tradução sem passar pelo pedido — isso evita usar um serviço pago
+  // ou traduzir sem pagar com um pedido montado à mão
+  if (!PUBLIC_MODE && (parsed.data.providerId || action === "start")) return fail("Para traduzir este livro, confirme o pedido.", 403);
 
   if (action === "pause") {
     await jobRunner.pause(id);
@@ -186,11 +190,19 @@ export async function POST(request: Request, { params }: Ctx) {
     });
     await jobRunner.start(id, { partial: parsed.data.partial });
   } else if (action === "retry-failed") {
-    const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);
-    if (chosen.error) return chosen.error;
-    await store.update(id, (m) => {
-      m.provider = { id: chosen.cfg.id, model: chosen.cfg.model };
-    });
+    if (PUBLIC_MODE) {
+      const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);
+      if (chosen.error) return chosen.error;
+      await store.update(id, (m) => {
+        m.provider = { id: chosen.cfg.id, model: chosen.cfg.model };
+      });
+    } else {
+      // cliente: refaz os trechos que falharam com o mesmo tipo de tradução do pedido
+      if (checkoutMode() === "live" && meta.order?.status !== "paid") return fail("Confirme o pedido para continuar a tradução.", 402);
+      await store.update(id, (m) => {
+        m.level ??= "padrao";
+      });
+    }
     // libera os trechos que falharam e volta a traduzir só eles
     const affected = new Set<string>();
     for (const c of meta.chapters) if (c.failedSegments > 0) affected.add(c.docId);

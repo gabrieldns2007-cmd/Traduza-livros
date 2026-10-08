@@ -6,7 +6,7 @@
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished } from "vitest";
 import { writeEpub } from "@/services/export/epub-writer";
 import { importBook } from "@/services/parsing/import-book";
 import { config } from "@/lib/config";
@@ -15,6 +15,8 @@ import { jobRunner } from "@/services/processing/job-runner";
 import { confirmOrder, offerFor, placeOrder } from "@/services/commerce/orders";
 import { applyPaymentEvent } from "@/services/billing/payments";
 import { recordExhausted } from "@/services/quota/usage";
+import { routeProvider } from "@/services/commerce/routing";
+import { viewOf } from "@/lib/api";
 import { ProviderError } from "@/services/translation/llm/types";
 import type { BatchInput, BatchOutput, TranslationProvider } from "@/services/translation/translation-provider";
 
@@ -116,6 +118,33 @@ describe("compra de uma tradução", () => {
     expect(done.order!.status).toBe("paid");
     expect(done.order!.payment).toBe("beta");
     expect(done.runs!.at(-1)!.provider).toBe("gemini");
+
+    // o que o navegador do cliente recebe não diz qual IA traduziu nem quanto custou
+    const view = JSON.stringify(viewOf(done));
+    expect(view).not.toMatch(/gemini|anthropic|costUsd|inputTokens":[1-9]/i);
+    expect(view).not.toContain(MODELS.gemini);
+  });
+
+  it("a tradução Padrão nunca usa um serviço pago, mesmo se estiver na lista", async () => {
+    await writeSettings({
+      ...DEFAULT_SETTINGS,
+      geminiApiKey: "chave-gemini",
+      routing: { padrao: ["anthropic", "gemini"] },
+    });
+    const before = process.env.ANTHROPIC_API_KEY;
+    process.env.ANTHROPIC_API_KEY = "sk-teste";
+    onTestFinished(() => {
+      if (before === undefined) delete process.env.ANTHROPIC_API_KEY;
+      else process.env.ANTHROPIC_API_KEY = before;
+    });
+    const route = await routeProvider("padrao", { ...DEFAULT_SETTINGS, geminiApiKey: "chave-gemini", routing: { padrao: ["anthropic", "gemini"] } });
+    expect(route.ok && route.provider.id).toBe("gemini");
+    // e, sem gratuitos com cota, espera — não troca para o pago
+    await recordExhausted("gemini", MODELS.gemini, Date.now() + 60_000);
+    const later = await routeProvider("padrao", { ...DEFAULT_SETTINGS, geminiApiKey: "chave-gemini", routing: { padrao: ["anthropic", "gemini"] } });
+    expect(later.ok).toBe(false);
+    // a Literária (paga) só existe quando o administrador liga
+    expect((await routeProvider("literaria", DEFAULT_SETTINGS)).ok).toBe(false);
   });
 
   it("cota de um serviço gratuito acaba: segue sozinho com o próximo, sem perder nada", async () => {

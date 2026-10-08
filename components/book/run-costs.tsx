@@ -27,23 +27,22 @@ export function RunCosts({ runs, words }: { runs: TranslationRun[]; words: numbe
       cost: t.cost + (r.costUsd ?? 0),
       words: t.words + r.words,
       ms: t.ms + r.activeMs,
-      value: t.value + r.credits.valueMilli,
     }),
-    { inputTokens: 0, outputTokens: 0, cost: 0, words: 0, ms: 0, value: 0 },
+    { inputTokens: 0, outputTokens: 0, cost: 0, words: 0, ms: 0 },
   );
   const per1k = total.words ? (total.cost / total.words) * 1000 : 0;
   const byok = runs.every((r) => r.billing !== "hosted");
   const demoOnly = runs.every((r) => r.billing === "none");
 
   return (
-    <section className="mt-16">
+    <section className="mt-8">
       <h2 className="label">Custos desta tradução</h2>
       <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
         {demoOnly
           ? "Modo demonstração: nenhum serviço de IA foi usado."
           : byok
-            ? "Feita com a chave gratuita da própria pessoa: custo zero para você. Abaixo, quanto custaria pela tabela de preços."
-            : "Pela tabela de preços dos modelos. Compare com o valor em créditos para ver a margem."}
+            ? "Feita só com serviços gratuitos: custo real zero. Abaixo, quanto custaria pela tabela de preços."
+            : "Pela tabela de preços dos modelos (a parte feita com serviços gratuitos não custou nada)."}
       </p>
       <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div>
@@ -64,9 +63,9 @@ export function RunCosts({ runs, words }: { runs: TranslationRun[]; words: numbe
           <dd className="num text-[0.8125rem] text-muted">de {formatNumber(words)}</dd>
         </div>
         <div>
-          <dt className="label">Em créditos</dt>
-          <dd className="serif num mt-1 text-[1.25rem] text-ink">{formatNumber(Math.ceil(total.value / 1000))}</dd>
-          <dd className="text-[0.8125rem] text-muted">{Math.round(total.ms / 60000)} min de processamento</dd>
+          <dt className="label">Tempo</dt>
+          <dd className="serif num mt-1 text-[1.25rem] text-ink">{Math.max(1, Math.round(total.ms / 60000))} min</dd>
+          <dd className="text-[0.8125rem] text-muted">de processamento</dd>
         </div>
       </dl>
       <ul className="mt-5 divide-y divide-rule border-y border-rule">

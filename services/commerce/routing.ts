@@ -37,6 +37,8 @@ export async function routeProvider(level: LevelId, s: Settings, exclude: Set<st
     if (exclude.has(id)) continue;
     const cfg = configs.find((c) => c.id === id);
     if (!cfg?.available || cfg.billing === "none") continue;
+    // a tradução Padrão é vendida pelo preço de um serviço gratuito: nunca usa um pago
+    if (level === "padrao" && cfg.paid) continue;
     if (isFreeProvider(id)) {
       const q = await quotaFor(id, cfg.model);
       if (q.exhaustedUntil) {
@@ -55,5 +57,8 @@ export async function routeProvider(level: LevelId, s: Settings, exclude: Set<st
 export function levelOffered(level: LevelId, s: Settings): boolean {
   if (level === "literaria" && !s.offerLiteraria) return false;
   const configs = providerConfigs(s);
-  return routingFor(level, s).some((id) => configs.find((c) => c.id === id)?.available);
+  return routingFor(level, s).some((id) => {
+    const c = configs.find((x) => x.id === id);
+    return c?.available && c.billing !== "none" && !(level === "padrao" && c.paid);
+  });
 }

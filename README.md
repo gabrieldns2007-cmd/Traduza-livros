@@ -22,6 +22,16 @@ O servidor já escuta em todas as interfaces (`-H 0.0.0.0`). Na mesma rede Wi-Fi
 
 Para usar fora de casa, rode em um servidor (VPS, Railway, Fly.io, Render…) com um volume persistente e **defina `APP_PASSWORD`**.
 
+### Vender traduções (serviço comercial)
+
+O cliente compra **a tradução de um livro**, não “IA”: envia o arquivo, vê o preço em reais, confirma e acompanha. Ele nunca vê qual serviço de IA traduz, tokens ou custos.
+
+1. **Enviar** o livro → 2. **Confirmar** (idiomas, tipo de tradução e preço; amostra grátis opcional) → **Pagamento** → 3. **Tradução** (continua sozinha, inclusive quando a cota de um serviço gratuito acaba) → 4. **Baixar** EPUB e PDF, com revisão online.
+
+- **Preços** (`/precos`): Padrão R$ 0,39 e Literária R$ 1,49 por mil palavras + R$ 1,90 por pedido, mínimo R$ 9,90 (ex.: livro de 44 mil palavras = R$ 19,90 / R$ 67,90). Conta em `lib/billing/pricing.ts`; um teste impede preços que deem prejuízo.
+- **Painel** (`/admin`, senha `ADMIN_PASSWORD`): pedidos, custo real, margem, erros técnicos, ordem dos serviços de IA de cada tipo de tradução e as chaves.
+- **Pagamentos:** ainda não há meio de pagamento. Com `CHECKOUT_MODE=beta` (padrão) o cliente confirma sem pagar. Veja `docs/monetizacao.md`.
+
 ### Produção
 
 ```bash
@@ -238,6 +248,7 @@ Backup = copiar a pasta. Apagar um livro = apagar a pasta dele (ou usar “Exclu
 
 - Chaves de API só no servidor (variáveis de ambiente); nada sensível vai para o navegador.
 - `APP_PASSWORD` protege todas as páginas e rotas (cookie assinado com HMAC, limite de tentativas).
+- `ADMIN_PASSWORD` protege o painel administrativo (`/admin` e `/api/admin/*`). No servidor, o cliente não consegue escolher o serviço de IA nem começar uma tradução sem pedido (a API recusa).
 - Envios validados por extensão, assinatura do arquivo e tamanho (`MAX_UPLOAD_MB`); pacotes com descompressão excessiva são recusados.
 - Conteúdo do livro nunca é executado: a interface mostra o texto com HTML reconstruído só com tags seguras e sem atributos; imagens são servidas com `Content-Security-Policy: sandbox` e `nosniff`.
 - O texto vai ao provedor de IA apenas para ser traduzido.

@@ -8,6 +8,14 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
 import { ProviderPicker, type ProviderChoice } from "./provider-picker";
 import { PUBLIC_MODE } from "@/lib/mode";
+import { whenBack } from "@/lib/quota-format";
+
+/**
+ * No Verso de servidor próprio, quem acompanha é o CLIENTE: nada de serviço,
+ * modelo ou cota — só o progresso do livro, em linguagem simples.
+ * (Os detalhes técnicos ficam no painel administrativo.)
+ */
+const CUSTOMER = !PUBLIC_MODE;
 
 /** [102, 103, 104, 110, 111] → ["102 a 104", "110", "111"] */
 function ranges(nums: number[]): string[] {
@@ -32,6 +40,12 @@ function activityText(book: BookView, now: number | null): string | undefined {
   const a = book.activity;
   // o relógio só existe no navegador (evita diferença entre servidor e cliente)
   if (!a || now === null) return undefined;
+  if (CUSTOMER) {
+    if (a.kind === "waiting" && a.until) return `Só um instante: retomando em ${seconds(Date.parse(a.until) - now)}.`;
+    return a.chapters && a.chapters > 1
+      ? `Traduzindo ${a.chapters} capítulos curtos de uma vez — o progresso aparece ao fim de cada parte.`
+      : "O progresso aparece ao fim de cada parte.";
+  }
   const name = book.provider?.id === "gemini" ? "Gemini" : (PROVIDER_LABEL[book.provider?.id ?? ""] ?? "serviço");
   if (a.kind === "waiting" && a.until) {
     return `Aguardando o limite por minuto do ${name}. Continua sozinho em ${seconds(Date.parse(a.until) - now)}.`;
@@ -78,6 +92,21 @@ function headline(book: BookView, now: number | null): { title: string; sub?: st
       return { title, detail, sub: activityText(book, now) };
     }
     case "paused":
+      if (CUSTOMER) {
+        if (book.stopCode === "waiting")
+          return {
+            title: "Sua tradução está na fila.",
+            sub: `Ela continua sozinha ${book.resumeAt && now !== null ? whenBack(book.resumeAt, now) : "em breve"}. Você não precisa fazer nada.`,
+          };
+        if (book.stopCode === "unavailable")
+          return {
+            title: "Tradução pausada por um instante.",
+            sub: "Ela continua do mesmo ponto assim que possível. Tudo o que já foi traduzido está salvo.",
+          };
+        return book.stopCode
+          ? { title: "Tradução pausada.", sub: "Tudo o que já foi traduzido está salvo. Toque em Continuar para seguir do mesmo ponto." }
+          : { title: "Tradução pausada.", sub: "Continue quando quiser, de onde parou." };
+      }
       if (book.stopCode === "wallet")
         return { title: "Seus créditos acabaram.", sub: "O que já foi traduzido está salvo. Adicione créditos para continuar do mesmo ponto." };
       if (book.stopCode === "margin") return { title: "Tradução pausada para revisão.", sub: book.error };
@@ -90,7 +119,9 @@ function headline(book: BookView, now: number | null): { title: string; sub?: st
         ? { title: "Tradução pausada: sem créditos.", sub: book.error }
         : { title: "Tradução pausada.", sub: book.error ?? "Continue quando quiser, de onde parou." };
     case "error":
-      return { title: "A tradução parou.", sub: book.error };
+      return CUSTOMER
+        ? { title: "A tradução parou.", sub: "Tudo o que já foi traduzido está salvo. Toque em Continuar para tentar de novo." }
+        : { title: "A tradução parou.", sub: book.error };
     default:
       return { title: "" };
   }
@@ -152,7 +183,13 @@ export function ProgressPanel({
           <h2 className="serif text-[1.6rem] leading-tight tracking-[-0.015em] text-ink text-balance sm:text-[1.9rem]">{h.title}</h2>
           {h.detail && <p className="serif mt-1.5 truncate text-[1.0625rem] text-ink-2 italic">{h.detail}</p>}
           {h.sub && (
-            <p className={`mt-1.5 text-[0.9375rem] leading-snug ${book.status === "error" || book.stopCode ? "text-accent" : "text-ink-2"}`}>
+            <p
+              className={`mt-1.5 text-[0.9375rem] leading-snug ${
+                book.status === "error" || (book.stopCode && !(CUSTOMER && ["waiting", "unavailable"].includes(book.stopCode)))
+                  ? "text-accent"
+                  : "text-ink-2"
+              }`}
+            >
               {h.sub}
             </p>
           )}
@@ -170,15 +207,19 @@ export function ProgressPanel({
 
       <ProgressBar value={book.percent} active={running} className="mt-6" />
 
-      <dl className="mt-6 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-        <div>
-          <dt className="label">Provedor</dt>
-          <dd className="mt-0.5 text-[0.9375rem] text-ink">{book.provider ? (PROVIDER_LABEL[book.provider.id] ?? book.provider.id) : "—"}</dd>
-        </div>
-        <div className="min-w-0">
-          <dt className="label">Modelo</dt>
-          <dd className="mt-0.5 truncate text-[0.9375rem] text-ink">{book.provider?.model ?? "—"}</dd>
-        </div>
+      <dl className={`mt-6 grid grid-cols-2 gap-x-4 gap-y-3 ${CUSTOMER ? "" : "sm:grid-cols-4"}`}>
+        {!CUSTOMER && (
+          <>
+            <div>
+              <dt className="label">Provedor</dt>
+              <dd className="mt-0.5 text-[0.9375rem] text-ink">{book.provider ? (PROVIDER_LABEL[book.provider.id] ?? book.provider.id) : "—"}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="label">Modelo</dt>
+              <dd className="mt-0.5 truncate text-[0.9375rem] text-ink">{book.provider?.model ?? "—"}</dd>
+            </div>
+          </>
+        )}
         <div>
           <dt className="label">Progresso</dt>
           <dd className="num mt-0.5 text-[0.9375rem] text-ink">
@@ -211,7 +252,7 @@ export function ProgressPanel({
         </div>
       </dl>
 
-      {!running && (
+      {!running && !CUSTOMER && (
         <div className="mt-7">
           <ProviderPicker bookId={book.id} onChange={setChoice} />
         </div>
@@ -223,8 +264,8 @@ export function ProgressPanel({
             Pausar
           </Button>
         ) : (
-          <Button onClick={() => run("resume")} disabled={busy || !choice?.ready || !choice.creditsOk}>
-            {busy ? "Continuando…" : "Continuar tradução"}
+          <Button onClick={() => run("resume")} disabled={busy || (!CUSTOMER && (!choice?.ready || !choice.creditsOk))}>
+            {busy ? "Continuando…" : CUSTOMER && book.stopCode === "waiting" ? "Tentar agora" : "Continuar tradução"}
           </Button>
         )}
         {!running && book.resumeIndex >= 0 && (
@@ -237,7 +278,7 @@ export function ProgressPanel({
           <p className="text-[0.8125rem] text-muted">
             {PUBLIC_MODE
               ? "Deixe o Verso aberto enquanto traduz. Se fechar, a tradução continua de onde parou quando você voltar."
-              : "Pode fechar esta página — a tradução continua no servidor."}
+              : "Pode fechar esta página — a tradução continua sem você."}
           </p>
         )}
       </div>
@@ -247,7 +288,7 @@ export function ProgressPanel({
         </p>
       )}
 
-      {book.isDemo && (
+      {book.isDemo && !CUSTOMER && (
         <p className="mt-6 rounded-xl bg-paper-2 px-4 py-3 text-[0.8125rem] leading-relaxed text-ink-2">
           <strong className="font-medium text-ink">Modo demonstração:</strong> o texto está sendo copiado sem tradução. Configure um provedor de IA
           para traduzir de verdade.

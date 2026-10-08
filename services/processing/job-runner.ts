@@ -476,6 +476,9 @@ class JobRunner {
 
       if (signal.aborted) throw signal.reason ?? new Error("aborted");
 
+      // capítulos que ficaram prontos sem passar por aqui (ex.: inteiros na amostra): falta o título traduzido
+      for (const c of (await store.get(bookId))!.chapters) if (c.status === "done" && !c.translatedTitle) await this.finishChapter(bookId, c.id);
+
       await store.update(bookId, (m) => {
         m.status = "done";
         m.phase = undefined;

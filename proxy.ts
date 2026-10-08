@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { SESSION_COOKIE, authEnabled, isValidSession } from "@/lib/auth";
+import { ADMIN_COOKIE, SESSION_COOKIE, adminEnabled, authEnabled, isValidAdmin, isValidSession } from "@/lib/auth";
 import { PUBLIC_MODE } from "@/lib/mode";
 
 /** Exige a senha (se APP_PASSWORD estiver definida) em todas as páginas e rotas da API. */
@@ -13,8 +13,20 @@ export async function proxy(request: NextRequest) {
     }
     return NextResponse.next();
   }
-  if (!authEnabled()) return NextResponse.next();
   const { pathname } = request.nextUrl;
+  // painel administrativo: senha própria (ADMIN_PASSWORD), além da do site
+  const adminArea =
+    (pathname === "/admin" || pathname.startsWith("/admin/") || pathname.startsWith("/api/admin/")) &&
+    pathname !== "/admin/entrar" &&
+    pathname !== "/api/admin/auth";
+  if (adminArea && adminEnabled() && !(await isValidAdmin(request.cookies.get(ADMIN_COOKIE)?.value))) {
+    if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Acesso restrito ao administrador." }, { status: 401 });
+    const url = request.nextUrl.clone();
+    url.pathname = "/admin/entrar";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+  if (!authEnabled()) return NextResponse.next();
   if (pathname === "/entrar" || pathname === "/api/auth") return NextResponse.next();
   if (await isValidSession(request.cookies.get(SESSION_COOKIE)?.value)) return NextResponse.next();
   if (pathname.startsWith("/api/")) {

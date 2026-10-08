@@ -16,7 +16,9 @@ export default async function HomePage() {
           Traduza seu livro<span className="text-accent">.</span>
         </h1>
         <p className="serif mt-5 max-w-[32rem] text-[1.25rem] leading-[1.45] text-ink-2 sm:mt-6 sm:text-[1.375rem]">
-          Transforme um livro inteiro em outro idioma, preservando capítulos, estrutura e formatação.
+          {PUBLIC_MODE
+            ? "Transforme um livro inteiro em outro idioma, preservando capítulos, estrutura e formatação."
+            : "Envie o livro, veja o preço na hora e receba a tradução completa em EPUB e PDF."}
         </p>
       </section>
 

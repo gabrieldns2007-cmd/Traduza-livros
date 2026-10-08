@@ -44,3 +44,37 @@ export async function checkPassword(candidate: string): Promise<boolean> {
   const b = await hmac("compare", password);
   return a === b;
 }
+
+/* ---------------- painel administrativo (ADMIN_PASSWORD) ---------------- */
+
+/**
+ * O painel /admin mostra custos, margens, serviços de IA e chaves. Com
+ * ADMIN_PASSWORD definida, ele pede essa senha (separada da do site).
+ * Defina antes de abrir o Verso para clientes.
+ */
+export const ADMIN_COOKIE = "verso_admin";
+
+export function adminEnabled(): boolean {
+  return Boolean(process.env.ADMIN_PASSWORD);
+}
+
+export async function adminToken(): Promise<string> {
+  const password = process.env.ADMIN_PASSWORD ?? "";
+  return hmac(process.env.SESSION_SECRET || password, `verso-admin:${password}`);
+}
+
+export async function isValidAdmin(token: string | undefined): Promise<boolean> {
+  if (!adminEnabled()) return true;
+  if (!token) return false;
+  const expected = await adminToken();
+  if (token.length !== expected.length) return false;
+  let diff = 0;
+  for (let i = 0; i < token.length; i++) diff |= token.charCodeAt(i) ^ expected.charCodeAt(i);
+  return diff === 0;
+}
+
+export async function checkAdminPassword(candidate: string): Promise<boolean> {
+  const password = process.env.ADMIN_PASSWORD ?? "";
+  if (!password) return true;
+  return (await hmac("compare", candidate)) === (await hmac("compare", password));
+}

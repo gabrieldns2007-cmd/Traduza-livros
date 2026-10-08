@@ -5,6 +5,7 @@ import { estimateCost } from "@/lib/cost";
 import { isFreeProvider, quotaFor } from "@/services/quota/usage";
 import { quoteWords } from "@/lib/billing/quote";
 import { walletSummary } from "@/services/billing/account";
+import { PUBLIC_MODE } from "@/lib/mode";
 
 /**
  * Serviços disponíveis para este livro: os gratuitos com os “créditos grátis
@@ -12,6 +13,8 @@ import { walletSummary } from "@/services/billing/account";
  * O sugerido é sempre gratuito — de preferência um que ainda tenha cota.
  */
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
+  // no servidor próprio o cliente não escolhe o serviço (fica no painel administrativo)
+  if (!PUBLIC_MODE) return fail("Não encontrado.", 404);
   const meta = await loadBook((await params).id);
   if (!meta) return fail("Livro não encontrado.", 404);
   const settings = await readSettings();

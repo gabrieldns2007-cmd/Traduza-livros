@@ -11,6 +11,68 @@ pagamentos ainda **não** estão ligados, e nada é cobrado hoje.
 
 ---
 
+## 0. O que o cliente compra: a tradução de um livro
+
+> Atualização: no servidor próprio (serviço comercial), o Verso vende **a tradução de
+> um livro, com preço em reais**. Créditos e planos (seções 1 a 3) continuam no código
+> como base interna e para a versão pública, mas não aparecem para o cliente.
+
+**O cliente não compra IA.** Ele nunca vê qual serviço ou modelo traduziu, tokens,
+custo do serviço, nem mensagens técnicas de erro — isso fica no painel
+administrativo (`/admin`). A API também não envia esses dados ao navegador.
+
+**Fluxo (sem tutorial):**
+
+1. **Enviar** o livro (EPUB ou PDF).
+2. **Confirmar**: “Seu livro está pronto para tradução.” — título, idiomas (com
+   “Alterar”), palavras e capítulos, o tipo de tradução com o preço, o que está
+   incluído, preferências opcionais e uma **amostra grátis** opcional.
+3. **Pagamento**: resumo do pedido e o total. No beta, “Grátis durante o beta”.
+4. **Tradução**: progresso em linguagem simples; continua sozinha, mesmo com a
+   página fechada.
+5. **Baixar** EPUB e PDF, com revisão e edição online.
+
+**Preço** (`lib/billing/pricing.ts`):
+
+    preço = palavras ÷ 1000 × preço por mil  +  R$ 1,90 por pedido
+            arredondado para cima em ,90 e nunca abaixo de R$ 9,90
+
+| Tipo | Por mil palavras | Livro de 44.152 palavras |
+| --- | --- | --- |
+| Padrão — fluente e fiel | R$ 0,39 | R$ 19,90 |
+| Literária — voz do autor, ritmo, imagens | R$ 1,49 | R$ 67,90 |
+
+O R$ 1,90 por pedido cobre custos operacionais (tarifa fixa do pagamento,
+armazenamento, suporte). `assertPricingProtectsMargin` (rodado nos testes) garante
+que, para livros de 300 a 1 milhão de palavras, o preço líquido (sem taxa de
+pagamento e impostos) cobre o **pior** custo de processamento daquele tipo de
+tradução + o custo fixo, com a margem mínima.
+
+**Pedido** (`services/commerce/orders.ts`): ao tocar em “Traduzir livro”, o preço
+fica travado no pedido (`BookMeta.order`). Ao confirmar:
+
+- `CHECKOUT_MODE=beta` (padrão): o pedido é marcado como pago “beta” e a tradução
+  começa — nada é cobrado;
+- `CHECKOUT_MODE=live`: a tradução só começa quando o meio de pagamento avisar
+  (webhook → `applyPaymentEvent` com o produto `order:<livro>:<pedido>`). Sem meio
+  de pagamento configurado, a confirmação mostra “Pagamentos em breve”.
+
+**Quem traduz** (`services/commerce/routing.ts`, editável no painel):
+
+- Padrão: Gemini → GitHub Models → Groq (todos gratuitos). Se a cota de um acaba, a
+  tradução passa sozinha para o próximo; se todos acabam, espera a cota voltar e
+  continua sozinha (“Sua tradução está na fila”).
+- A Padrão **nunca** usa um serviço pago, mesmo que ele seja colocado na lista.
+- Literária: Anthropic. Só é vendida quando o administrador liga “Vender a tradução
+  Literária” no painel — antes disso aparece como “Em breve”.
+
+**Painel administrativo** (`/admin`, senha `ADMIN_PASSWORD`): pedidos, valor dos
+pedidos (beta) ou receita, custo real (só serviços pagos) e quanto custaria pela
+tabela, margem por livro, erros técnicos, histórico de execuções, ordem dos serviços
+por tipo, tabela de preços com margem e as chaves dos serviços.
+
+---
+
 ## 1. Estratégia recomendada: créditos + assinatura (híbrido)
 
 | Modelo | A favor | Contra | Para o Verso |
@@ -199,6 +261,13 @@ dados, faltam limites por IP e por aparelho.
   equipes (pequenas editoras).
 
 ## 9. Como ligar os pagamentos depois
+
+Para a venda por livro (seção 0): implementar `createCheckout` para o produto
+`order:<livro>:<pedido>` (valor = `order.priceBrl`), criar a rota do webhook chamando
+`applyPaymentEvent` e definir `CHECKOUT_MODE=live`. O resto já está pronto: o pedido
+pago inicia a tradução uma única vez, mesmo com avisos repetidos.
+
+Para créditos e planos (versão pública):
 
 1. Escolher o meio de pagamento (Mercado Pago ou Stripe; Pix reduz a taxa).
 2. Implementar `PaymentProvider` (`services/billing/payments.ts`):

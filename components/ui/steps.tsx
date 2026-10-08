@@ -2,14 +2,27 @@ import { Check } from "./icons";
 
 const STEPS = ["Enviar", "Prévia grátis", "Traduzir e baixar"];
 
+/** Etapas da compra de uma tradução (Verso de servidor próprio). */
+export const COMMERCE_STEPS = ["Enviar", "Confirmar", "Tradução", "Baixar"];
+
 /**
- * Passos 1-2-3: Enviar → Prévia grátis → Traduzir e baixar.
- * `current` é o passo em andamento (1 a 3); `done` marca o último como concluído.
+ * Etapas do processo (padrão: Enviar → Prévia grátis → Traduzir e baixar).
+ * `current` é a etapa em andamento (a partir de 1); `done` marca a última como concluída.
  */
-export function Steps({ current, done = false, className = "" }: { current: 1 | 2 | 3; done?: boolean; className?: string }) {
+export function Steps({
+  current,
+  done = false,
+  className = "",
+  steps = STEPS,
+}: {
+  current: number;
+  done?: boolean;
+  className?: string;
+  steps?: string[];
+}) {
   return (
     <ol className={`flex items-center justify-between gap-2 sm:justify-start ${className}`} aria-label="Etapas">
-      {STEPS.map((label, i) => {
+      {steps.map((label, i) => {
         const n = i + 1;
         const complete = n < current || (done && n === current);
         const active = n === current && !done;
@@ -29,7 +42,7 @@ export function Steps({ current, done = false, className = "" }: { current: 1 | 
             <span className={`text-[0.75rem] whitespace-nowrap sm:text-[0.8125rem] ${active ? "text-ink" : complete ? "text-ink-2" : "text-muted"}`}>
               {label}
             </span>
-            {n < STEPS.length && <span className={`hidden h-px min-w-4 flex-1 sm:block ${complete ? "bg-ink-2" : "bg-rule"}`} aria-hidden />}
+            {n < steps.length && <span className={`hidden h-px min-w-4 flex-1 sm:block ${complete ? "bg-ink-2" : "bg-rule"}`} aria-hidden />}
           </li>
         );
       })}
