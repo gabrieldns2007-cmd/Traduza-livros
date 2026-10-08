@@ -17,6 +17,9 @@ const nextConfig: NextConfig = {
     // O proxy (proteção por senha) bufferiza o corpo da requisição; uploads de livros podem ser grandes.
     proxyClientMaxBodySize: "200mb",
   },
+  // A checagem de tipos roda em `npm run typecheck` e nos testes; pulá-la no build
+  // economiza memória (máquinas pequenas, como o Codespace básico, podiam encerrar o build).
+  typescript: { ignoreBuildErrors: true },
   poweredByHeader: false,
 };
 
