@@ -14,8 +14,8 @@
 import { PACKS, PLANS, type PlanId } from "@/lib/billing/catalog";
 import { wallet } from "./wallet";
 
-/** O que pode ser vendido: um pacote de créditos ou um plano mensal. */
-export type ProductId = (typeof PACKS)[number]["id"] | `plan-${Exclude<PlanId, "free">}`;
+/** O que pode ser vendido: a tradução de um livro, um pacote de créditos ou um plano mensal. */
+export type ProductId = `order:${string}:${string}` | (typeof PACKS)[number]["id"] | `plan-${Exclude<PlanId, "free">}`;
 
 export interface PaymentEvent {
   kind: "purchase.completed" | "subscription.started" | "subscription.renewed" | "subscription.canceled" | "refund";
@@ -52,6 +52,12 @@ export function paymentProvider(): PaymentProvider | null {
  * tinha sido aplicado (o meio de pagamento reenviou o aviso).
  */
 export async function applyPaymentEvent(event: PaymentEvent): Promise<boolean> {
+  // pedido de tradução de um livro: “order:<livro>:<pedido>”
+  const order = /^order:([a-z0-9-]+):(ord_[\w-]+)$/.exec(event.productId);
+  if (order && event.kind === "purchase.completed") {
+    const { markPaid } = await import("@/services/commerce/orders");
+    return markPaid(order[1], order[2], { payment: "provider", externalId: event.externalId });
+  }
   const pack = PACKS.find((p) => p.id === event.productId);
   if (pack && event.kind === "purchase.completed") {
     return wallet.grant("pack", pack.credits, {

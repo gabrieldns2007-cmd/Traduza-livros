@@ -214,6 +214,10 @@ class BookStore {
 /** As chaves gratuitas (Gemini, GitHub, Groq) ficam só no servidor, em data/settings.json. */
 export interface Settings extends ProviderSettings {
   providerId?: string;
+  /** ordem dos serviços por tipo de tradução (painel administrativo) */
+  routing?: { padrao?: string[]; literaria?: string[] };
+  /** oferecer a Tradução Literária (usa um serviço pago, coberto pelo preço) */
+  offerLiteraria?: boolean;
   targetLanguage: string;
   dialogueStyle: "target" | "source";
   deepContext: boolean;

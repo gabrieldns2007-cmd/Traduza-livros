@@ -6,6 +6,10 @@ import { estimateCost } from "@/lib/cost";
 import type { BookMeta } from "@/types/book";
 import { findLanguage } from "@/lib/languages";
 import { jobRunner, recountProgress } from "@/services/processing/job-runner";
+import { applySetup } from "@/services/commerce/setup";
+import { routeProvider } from "@/services/commerce/routing";
+import { checkoutMode } from "@/services/commerce/orders";
+import { PUBLIC_MODE } from "@/lib/mode";
 import { billingMode } from "@/lib/billing/mode";
 import { milliFor, quoteWords } from "@/lib/billing/quote";
 import { CREDIT, PLANS, planById, qualityOfModel } from "@/lib/billing/catalog";
@@ -93,44 +97,6 @@ async function checkPlanQuality(cfg: { model: string; billing: "byok" | "hosted"
   return fail(`A qualidade ${quality.label} está disponível no plano ${needed?.name ?? "Pro"}.`, 403);
 }
 
-type SetupBody = Pick<z.infer<typeof Body>, "targetLanguage" | "sourceLanguage" | "options">;
-
-/**
- * Aplica idiomas e opções antes da prévia ou do início. Se os idiomas mudarem
- * depois de uma prévia, o trecho da prévia é descartado (ele estava em outro idioma).
- */
-async function applySetup(meta: BookMeta, body: SetupBody) {
-  const { targetLanguage, sourceLanguage, options } = body;
-  const notStarted = meta.status === "ready";
-  const nextTarget = notStarted && targetLanguage ? (findLanguage(targetLanguage)?.code ?? meta.targetLanguage) : meta.targetLanguage;
-  const nextSource =
-    notStarted && sourceLanguage !== undefined
-      ? sourceLanguage && sourceLanguage !== "auto"
-        ? (findLanguage(sourceLanguage)?.code ?? null)
-        : null
-      : meta.sourceLanguage;
-  const languagesChanged = nextTarget !== meta.targetLanguage || nextSource !== meta.sourceLanguage;
-  if (languagesChanged && meta.preview) {
-    const p = meta.preview;
-    await store.updateDoc(meta.id, p.docId, (content) => {
-      for (const s of content.segments.slice(p.start, p.end)) if (!s.edited) delete s.out;
-    });
-  }
-  await store.update(meta.id, (m) => {
-    m.targetLanguage = nextTarget;
-    m.sourceLanguage = nextSource;
-    if (languagesChanged) delete m.preview;
-    if (options) {
-      m.options = {
-        dialogueStyle: options.dialogueStyle ?? m.options.dialogueStyle,
-        deepContext: options.deepContext ?? m.options.deepContext,
-        instructions: options.instructions?.trim() || undefined,
-      };
-    }
-  });
-  if (languagesChanged && meta.preview) await recountProgress(meta.id);
-}
-
 export async function POST(request: Request, { params }: Ctx) {
   const id = (await params).id;
   const meta = await loadBook(id);
@@ -143,6 +109,25 @@ export async function POST(request: Request, { params }: Ctx) {
 
   if (action === "pause") {
     await jobRunner.pause(id);
+  } else if (action === "preview" && !parsed.data.providerId && !PUBLIC_MODE) {
+    // cliente: a amostra grátis usa a tradução Padrão, com o serviço escolhido por dentro
+    if (meta.status !== "ready") return fail("A amostra é feita antes de começar a tradução.", 409);
+    const route = await routeProvider("padrao", await readSettings());
+    if (!route.ok) return fail("A amostra grátis não está disponível agora. Tente de novo mais tarde.", 503);
+    await applySetup(meta, parsed.data);
+    try {
+      await jobRunner.preview(id, route.provider.id);
+    } catch {
+      return fail("Não foi possível fazer a amostra agora. Tente de novo.", 400);
+    }
+  } else if (action === "resume" && !parsed.data.providerId && !PUBLIC_MODE) {
+    // cliente: continua com o tipo de tradução do livro (ou Padrão); o serviço é escolhido por dentro
+    if (meta.status === "done") return fail("Este livro já foi traduzido.", 409);
+    if (checkoutMode() === "live" && meta.order?.status !== "paid") return fail("Confirme o pedido para continuar a tradução.", 402);
+    await store.update(id, (m) => {
+      m.level ??= "padrao";
+    });
+    await jobRunner.start(id);
   } else if (action === "preview") {
     if (meta.status !== "ready") return fail("A prévia é feita antes de começar a tradução.", 409);
     const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);

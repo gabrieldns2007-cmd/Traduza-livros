@@ -159,6 +159,25 @@ export interface TranslationRun {
   stopReason?: string;
 }
 
+/**
+ * Pedido de tradução: o que o cliente comprou. O preço fica travado no
+ * momento do pedido e cobre as palavras que faltavam traduzir.
+ */
+export interface BookOrder {
+  id: string;
+  /** tipo de tradução escolhido pelo cliente */
+  level: "padrao" | "literaria";
+  words: number;
+  priceBrl: number;
+  status: "awaiting_payment" | "paid" | "canceled";
+  /** "beta": confirmado sem cobrança durante o beta; "provider": pago pelo meio de pagamento */
+  payment: "beta" | "provider" | null;
+  createdAt: string;
+  paidAt?: string;
+  /** id do pagamento no meio de pagamento */
+  externalId?: string;
+}
+
 /** Prévia grátis: um trecho traduzido antes de decidir traduzir o livro todo. */
 export interface BookPreview {
   status: "running" | "done" | "error";
@@ -202,6 +221,11 @@ export interface BookMeta {
   options: TranslationOptions;
   provider?: { id: string; model: string };
   preview?: BookPreview;
+  /** tipo de tradução (o serviço de IA é escolhido por dentro, conforme o tipo) */
+  level?: "padrao" | "literaria";
+  order?: BookOrder;
+  /** pausada à espera de cota: quando continua sozinha (ISO) */
+  resumeAt?: string;
   /** histórico de execuções (custo real por tradução) */
   runs?: TranslationRun[];
   usage: { inputTokens: number; outputTokens: number };

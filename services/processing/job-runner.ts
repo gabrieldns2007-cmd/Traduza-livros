@@ -14,6 +14,7 @@ import { billingOf, defaultProviderId, FREE_PROVIDERS } from "@/lib/config";
 import { billingMode } from "@/lib/billing/mode";
 import { activeRunIds, BillingStop, RunLedger } from "@/services/billing/run-ledger";
 import { wallet } from "@/services/billing/wallet";
+import { routeProvider, type Route } from "@/services/commerce/routing";
 import { toPlainText } from "@/lib/markup";
 import { mergeCandidates } from "@/services/glossary/glossary";
 import { createProvider, type TranslationProvider } from "@/services/translation";
@@ -37,6 +38,10 @@ class JobRunner {
   private previews = new Map<string, AbortController>();
   /** livros cuja próxima execução pode usar só o saldo disponível (tradução parcial) */
   private partial = new Set<string>();
+  /** serviços que falharam de vez para um livro (chave recusada, modelo indisponível) */
+  private excluded = new Map<string, Set<string>>();
+  /** retomadas agendadas para quando a cota voltar */
+  private timers = new Map<string, ReturnType<typeof setTimeout>>();
   /** fábrica do provedor (substituível em testes) */
   providerFactory: (id: string, settings?: Awaited<ReturnType<typeof readSettings>>) => TranslationProvider = createProvider;
 
@@ -52,10 +57,14 @@ class JobRunner {
         if (m.preview) Object.assign(m.preview, { status: "error", error: "O servidor reiniciou. Peça a prévia de novo." });
       });
     }
+    // traduções à espera de cota continuam sozinhas na hora marcada
+    for (const b of books) if (b.status === "paused" && b.stopCode === "waiting" && b.resumeAt) this.scheduleResume(b.id, Date.parse(b.resumeAt));
     const pending = books.filter((b) => ACTIVE.includes(b.status)).sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
     for (const b of pending) {
-      // provedor pago nunca recomeça sozinho: fica pausado até o usuário confirmar
-      const paid = b.provider && !(FREE_PROVIDERS as readonly string[]).includes(b.provider.id) && b.provider.id !== "demo";
+      // provedor pago nunca recomeça sozinho: fica pausado até o usuário confirmar —
+      // a não ser que o cliente já tenha pago a tradução (o preço cobre esse custo)
+      const paid =
+        b.provider && !(FREE_PROVIDERS as readonly string[]).includes(b.provider.id) && b.provider.id !== "demo" && b.order?.status !== "paid";
       if (paid) {
         await store.update(b.id, (m) => {
           m.status = "paused";
@@ -77,6 +86,36 @@ class JobRunner {
     }
   }
 
+  /** Agenda a retomada de uma tradução pausada à espera de cota. */
+  private scheduleResume(bookId: string, at: number) {
+    clearTimeout(this.timers.get(bookId));
+    const delay = Math.min(Math.max(at - Date.now() + 5_000, 1_000), 2 ** 31 - 1);
+    const t = setTimeout(async () => {
+      this.timers.delete(bookId);
+      const m = await store.get(bookId);
+      if (m?.status === "paused" && m.stopCode === "waiting") await this.start(bookId);
+    }, delay);
+    (t as { unref?: () => void }).unref?.();
+    this.timers.set(bookId, t);
+  }
+
+  /** Sem serviço com cota agora: pausa com aviso amigável e agenda a retomada. */
+  private async waitForService(bookId: string, route: Extract<Route, { ok: false }>) {
+    const resumeAt = route.retryAt;
+    await store.update(bookId, (m) => {
+      m.status = "paused";
+      m.phase = "Na fila";
+      m.activeChapterIds = [];
+      m.stopCode = resumeAt ? "waiting" : "unavailable";
+      m.resumeAt = resumeAt ? new Date(resumeAt).toISOString() : undefined;
+      m.error = resumeAt
+        ? "Sua tradução está na fila e continua sozinha em breve. Você não precisa fazer nada."
+        : "Sua tradução foi pausada por um instante. Ela continua do mesmo ponto assim que o serviço voltar.";
+      for (const c of m.chapters) if (c.status === "translating" || c.status === "analyzing") c.status = "pending";
+    });
+    if (resumeAt) this.scheduleResume(bookId, resumeAt);
+  }
+
   isRunning(bookId: string) {
     return this.current?.bookId === bookId;
   }
@@ -91,12 +130,16 @@ class JobRunner {
 
   async start(bookId: string, opts: { partial?: boolean } = {}) {
     await this.init();
+    this.excluded.delete(bookId);
+    clearTimeout(this.timers.get(bookId));
+    this.timers.delete(bookId);
     if (opts.partial) this.partial.add(bookId);
     else this.partial.delete(bookId);
     await store.update(bookId, (m) => {
       m.status = "queued";
       m.error = undefined;
       m.stopCode = undefined;
+      m.resumeAt = undefined;
       m.phase = this.current ? "Na fila — aguardando outro livro" : "Estamos preparando sua tradução";
     });
     this.enqueue(bookId);
@@ -264,9 +307,20 @@ class JobRunner {
         `[runner] ${bookId}: ${resume.doneChapters}/${resume.totalChapters} capítulos já concluídos; continuando de ${resume.nextChapterId ?? "—"}`,
       );
 
-    // usa SEMPRE o provedor escolhido para este livro — nunca troca sozinho (nem para um pago)
+    // pedido de cliente (tipo de tradução): o serviço é escolhido por dentro, na ordem do painel,
+    // pulando os que estão sem cota. Sem tipo: usa SEMPRE o provedor escolhido para o livro.
     const settings = await readSettings();
-    const providerId = meta.provider?.id ?? defaultProviderId(settings);
+    let providerId: string;
+    if (meta.level) {
+      const route = await routeProvider(meta.level, settings, this.excluded.get(bookId));
+      if (!route.ok) {
+        await this.waitForService(bookId, route);
+        return;
+      }
+      providerId = route.provider.id;
+    } else {
+      providerId = meta.provider?.id ?? defaultProviderId(settings);
+    }
     let provider: TranslationProvider;
     try {
       provider = this.providerFactory(providerId, settings);
@@ -431,6 +485,28 @@ class JobRunner {
       await store.clearExports(bookId);
     } catch (err) {
       stopReason = signal.aborted ? "paused" : err instanceof ProviderError ? err.code : "error";
+      // pedido de cliente: se este serviço ficou sem cota (ou recusou a chave), segue com o próximo da lista
+      const leveled = !signal.aborted && (await store.get(bookId))?.level;
+      if (leveled && err instanceof ProviderError && ["quota", "auth", "model"].includes(err.code)) {
+        console.info(`[runner] ${bookId}: ${provider.id} indisponível (${err.code}); procurando outro serviço`);
+        if (err.code !== "quota") this.excluded.set(bookId, new Set([...(this.excluded.get(bookId) ?? []), provider.id]));
+        await recountProgress(bookId);
+        const route = await routeProvider(leveled, settings, this.excluded.get(bookId));
+        if (route.ok) {
+          await store.update(bookId, (m) => {
+            m.status = "queued";
+            m.phase = "Na fila";
+            m.activeChapterIds = [];
+            m.error = undefined;
+            m.stopCode = undefined;
+            for (const c of m.chapters) if (c.status === "translating" || c.status === "analyzing") c.status = "pending";
+          });
+          this.restart.add(bookId);
+        } else {
+          await this.waitForService(bookId, route);
+        }
+        return;
+      }
       if (signal.aborted) {
         // pausa ou exclusão: pause()/stop() já ajustaram o estado
         if (await store.get(bookId)) {

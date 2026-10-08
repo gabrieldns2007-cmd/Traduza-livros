@@ -43,6 +43,8 @@ export type ProviderErrorCode =
   // créditos do Verso acabaram / execução custando mais que o cobrado
   | "wallet"
   | "margin"
+  // sem serviço com cota agora: continua sozinha quando a cota voltar
+  | "waiting"
   | "auth"
   | "model"
   | "rate_limit"
