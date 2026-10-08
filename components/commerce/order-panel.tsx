@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import type { BookView } from "@/lib/api";
 import { api } from "@/lib/client";
 import { LANGUAGES, languageLabel } from "@/lib/languages";
@@ -22,24 +21,27 @@ export interface Offer {
   totalWords: number;
   chapters: number;
   levels: { id: "padrao" | "literaria"; label: string; description: string; priceBrl: number; available: boolean }[];
-  order: { id: string; level: string; priceBrl: number; status: string; words: number } | null;
+  order: { id: string; level: string; priceBrl: number; status: string; words: number; payment: "beta" | "provider" | null; paidAt?: string } | null;
   checkout: { mode: "beta" | "live"; payments: boolean };
 }
 
-const INCLUDED = [
-  "Tradução completa, capítulo por capítulo",
-  "Nomes e termos consistentes do começo ao fim",
-  "Revisão e edição online",
-  "EPUB para Kindle e PDF prontos para ler",
+export const INCLUDED = [
+  "Tradução do livro",
+  "Organização dos capítulos",
+  "Formatação preservada",
+  "EPUB",
+  "PDF",
+  "Revisão da tradução",
+  "Download do arquivo final",
 ];
 
 /**
  * Passo “Confirmar”: o livro está pronto para ser traduzido. A pessoa confere
- * idiomas, escolhe o tipo de tradução (já com o preço) e segue para o pagamento.
- * Nada técnico aparece aqui — só o livro, o idioma e o preço.
+ * idiomas, escolhe o tipo de tradução (já com o preço), vê o que está incluído
+ * e toca em “Pagar e traduzir”. Nada técnico aparece aqui — só o livro, o
+ * idioma e o preço.
  */
 export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: BookView) => void }) {
-  const router = useRouter();
   const [offer, setOffer] = useState<Offer | null>(null);
   const [level, setLevel] = useState<"padrao" | "literaria">("padrao");
   const [source, setSource] = useState(book.sourceLanguage ?? "auto");
@@ -67,12 +69,20 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
 
   const setup = { sourceLanguage: source, targetLanguage: target, options: { dialogueStyle, instructions } };
 
+  // um toque: trava o preço no pedido e confirma. No beta a tradução começa na hora;
+  // com pagamentos, vai para a página do meio de pagamento.
   const order = async () => {
     setBusy("order");
     setError("");
     try {
       await api(`/api/books/${book.id}/order`, { method: "POST", json: { level, ...setup } });
-      router.push(`/livros/${book.id}/pagamento`);
+      const r = await api<{ started: boolean; checkoutUrl?: string; book: BookView }>(`/api/books/${book.id}/order/confirm`, { method: "POST" });
+      if (r.checkoutUrl) {
+        window.location.href = r.checkoutUrl;
+        return;
+      }
+      onChange(r.book);
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (err) {
       setError((err as Error).message);
       setBusy("");
@@ -85,6 +95,7 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
     try {
       const { book: b } = await api<{ book: BookView }>(`/api/books/${book.id}/translate`, { method: "POST", json: { action: "preview", ...setup } });
       if (b) onChange(b);
+      requestAnimationFrame(() => document.getElementById("amostra")?.scrollIntoView({ behavior: "smooth", block: "start" }));
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -98,6 +109,8 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
   }
 
   const chosen = offer.levels.find((l) => l.id === level) ?? offer.levels[0];
+  const beta = offer.checkout.mode === "beta";
+  const canPay = beta || offer.checkout.payments;
   const sampleState = book.preview?.status;
   const detected = offer.detectedLanguage;
   const sourceLabel = source === "auto" ? languageLabel(detected, "Idioma original") : languageLabel(source);
@@ -181,21 +194,62 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
         })}
       </div>
 
-      {/* ---------- incluído ---------- */}
-      <ul className="mt-6 space-y-2">
-        {INCLUDED.map((item) => (
-          <li key={item} className="flex gap-2.5 text-[0.9375rem] text-ink-2">
-            <Check className="mt-0.5 h-4 w-4 shrink-0 text-ok" />
-            {item}
-          </li>
-        ))}
-      </ul>
-
       {/* ---------- amostra grátis ---------- */}
-      <SampleView book={book} />
+      <div id="amostra" className="scroll-mt-20">
+        <SampleView book={book} />
+      </div>
+
+      {/* ---------- total, incluído e ação ---------- */}
+      <div className="mt-8 rounded-[1.25rem] bg-paper-2 px-5 py-5 sm:px-6">
+        <div className="flex items-baseline justify-between gap-4">
+          <span className="text-[1rem] text-ink">Tradução completa</span>
+          <span className="serif num text-[1.75rem] leading-none text-ink">{brl(chosen.priceBrl)}</span>
+        </div>
+        <p className="label mt-5">Incluído</p>
+        <ul className="mt-2.5 grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+          {INCLUDED.map((item) => (
+            <li key={item} className="flex items-center gap-2.5 text-[0.9375rem] text-ink-2">
+              <Check className="h-4 w-4 shrink-0 text-ok" />
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {beta && (
+        <p className="mt-4 text-[0.9375rem] leading-relaxed text-ink-2">
+          <strong className="font-medium text-ink">Grátis durante o beta.</strong> Enquanto o Verso está em testes, você não paga nada.
+        </p>
+      )}
+      <Button onClick={order} disabled={!!busy || !chosen.available || !canPay || sampleState === "running"} className="mt-5 h-14 w-full text-[1rem]">
+        {busy === "order"
+          ? "Um instante…"
+          : !canPay
+            ? "Pagamentos em breve"
+            : beta
+              ? "Traduzir grátis"
+              : `Pagar e traduzir · ${brl(chosen.priceBrl)}`}
+        {busy !== "order" && canPay && <ArrowRight />}
+      </Button>
+      <p className="mt-3 text-center text-[0.8125rem] leading-relaxed text-muted">
+        {beta
+          ? "A tradução começa assim que você confirmar."
+          : canPay
+            ? "Pagamento único, sem assinatura e sem cobrança automática."
+            : "Estamos preparando os pagamentos. Volte em breve."}
+      </p>
+      {!sampleState && (
+        <button
+          onClick={sample}
+          disabled={!!busy}
+          className="link mx-auto mt-5 block py-1 text-center text-[0.9375rem] text-ink-2 hover:text-ink disabled:opacity-50"
+        >
+          {busy === "sample" ? "Pedindo a amostra…" : "Ver uma amostra grátis antes"}
+        </button>
+      )}
 
       {/* ---------- preferências ---------- */}
-      <div className="mt-6 border-t border-rule">
+      <div className="mt-8 border-t border-rule">
         <button
           type="button"
           onClick={() => setPrefsOpen((v) => !v)}
@@ -241,26 +295,6 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
           </div>
         )}
       </div>
-
-      {/* ---------- total e ação ---------- */}
-      <div className="mt-2 flex items-baseline justify-between gap-4 border-t border-rule pt-5">
-        <span className="text-[1rem] text-ink">Tradução completa</span>
-        <span className="serif num text-[1.75rem] leading-none text-ink">{brl(chosen.priceBrl)}</span>
-      </div>
-      <Button onClick={order} disabled={!!busy || !chosen.available || sampleState === "running"} className="mt-5 w-full">
-        {busy === "order" ? "Um instante…" : `Traduzir livro · ${brl(chosen.priceBrl)}`}
-        {busy !== "order" && <ArrowRight />}
-      </Button>
-      <p className="mt-3 text-center text-[0.8125rem] text-muted">Você confirma o pagamento na próxima tela.</p>
-      {!sampleState && (
-        <button
-          onClick={sample}
-          disabled={!!busy}
-          className="link mx-auto mt-4 block py-1 text-center text-[0.9375rem] text-ink-2 hover:text-ink disabled:opacity-50"
-        >
-          {busy === "sample" ? "Pedindo a amostra…" : "Ver uma amostra grátis antes"}
-        </button>
-      )}
       {error && (
         <p className="mt-4 text-center text-[0.9375rem] text-accent" role="alert">
           {error}

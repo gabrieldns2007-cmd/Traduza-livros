@@ -21,16 +21,35 @@ pagamentos ainda **não** estão ligados, e nada é cobrado hoje.
 custo do serviço, nem mensagens técnicas de erro — isso fica no painel
 administrativo (`/admin`). A API também não envia esses dados ao navegador.
 
-**Fluxo (sem tutorial):**
+**Fluxo (sem tutorial, poucas etapas):**
 
-1. **Enviar** o livro (EPUB ou PDF).
+1. **Página inicial** = página de venda: “Traduza seus livros.” / “Envie. Escolha o
+   idioma. Receba seu livro traduzido.” e um único botão, **Traduzir meu livro**,
+   que já abre o seletor de arquivo. Depois: como funciona, formatos, idiomas,
+   estrutura preservada, EPUB/PDF, preço (com exemplos) e perguntas frequentes.
 2. **Confirmar**: “Seu livro está pronto para tradução.” — título, idiomas (com
-   “Alterar”), palavras e capítulos, o tipo de tradução com o preço, o que está
-   incluído, preferências opcionais e uma **amostra grátis** opcional.
-3. **Pagamento**: resumo do pedido e o total. No beta, “Grátis durante o beta”.
-4. **Tradução**: progresso em linguagem simples; continua sozinha, mesmo com a
-   página fechada.
-5. **Baixar** EPUB e PDF, com revisão e edição online.
+   “Alterar”), palavras e capítulos, o tipo de tradução com o preço, **Tradução
+   completa: R$ X**, a lista **Incluído** (tradução, capítulos organizados,
+   formatação preservada, EPUB, PDF, revisão, download) e o botão **Pagar e
+   traduzir**. Amostra grátis e preferências são opcionais, abaixo do botão.
+3. **Pagamento**: a página do meio de pagamento. Na volta, “Confirmando seu
+   pagamento…” até o aviso do meio de pagamento chegar, e então **“Pagamento
+   confirmado.” / “Estamos preparando sua tradução.”**
+4. **Acompanhamento**: Livro → Processando → Traduzindo → Revisando → Pronto, com
+   “Seu livro está sendo traduzido.”, o percentual, “Capítulo X de Y” e a barra. A
+   pessoa pode fechar a página e voltar depois.
+5. **Pronto**: “Seu livro está pronto.” com **Baixar EPUB** e **Baixar PDF**, e a
+   revisão online.
+
+A etapa **Revisando** é real (`markForReview` no job runner): ao fim da tradução de
+um pedido, os trechos que falharam e os que voltaram iguais ao original são
+traduzidos de novo, uma vez. Trechos editados à mão nunca são tocados.
+
+**Venda sem pressão (sem dark patterns):** o preço aparece antes de qualquer
+pagamento, o botão diz exatamente o que faz, não há contagem regressiva, urgência,
+assinatura escondida nem taxa extra. Abaixo do botão: “Pagamento único, sem
+assinatura e sem cobrança automática.” No beta, o botão é **Traduzir grátis** —
+nunca “Pagar” quando nada é cobrado.
 
 **Preço** (`lib/billing/pricing.ts`):
 
@@ -48,14 +67,22 @@ que, para livros de 300 a 1 milhão de palavras, o preço líquido (sem taxa de
 pagamento e impostos) cobre o **pior** custo de processamento daquele tipo de
 tradução + o custo fixo, com a margem mínima.
 
-**Pedido** (`services/commerce/orders.ts`): ao tocar em “Traduzir livro”, o preço
-fica travado no pedido (`BookMeta.order`). Ao confirmar:
+**Pedido e pagamento** (`services/commerce/orders.ts`, `services/billing/payments.ts`):
+ao tocar em “Pagar e traduzir”, o preço fica travado no pedido (`BookMeta.order`) e:
 
-- `CHECKOUT_MODE=beta` (padrão): o pedido é marcado como pago “beta” e a tradução
+- `CHECKOUT_MODE=beta` (padrão): o pedido é confirmado como “beta” e a tradução
   começa — nada é cobrado;
-- `CHECKOUT_MODE=live`: a tradução só começa quando o meio de pagamento avisar
-  (webhook → `applyPaymentEvent` com o produto `order:<livro>:<pedido>`). Sem meio
-  de pagamento configurado, a confirmação mostra “Pagamentos em breve”.
+- `CHECKOUT_MODE=live` + `PAYMENT_PROVIDER`: a pessoa vai para a página do meio de
+  pagamento; a tradução só começa quando ele avisa o servidor
+  (`POST /api/payments/webhook/<meio>` → `applyPaymentEvent`, produto
+  `order:<livro>:<pedido>`). O retorno do navegador nunca vale como prova de
+  pagamento; avisos repetidos são ignorados; aviso com valor menor que o preço não
+  libera a tradução; reembolso fica registrado no pedido;
+- `PAYMENT_PROVIDER=simulado`: um meio de pagamento **de teste**, dentro do próprio
+  site, para ver a experiência completa sem dinheiro. Só o administrador aprova o
+  pagamento simulado (quando `ADMIN_PASSWORD` está definida). Nunca deixe ligado
+  com clientes de verdade;
+- sem meio de pagamento implementado, a confirmação mostra “Pagamentos em breve”.
 
 **Quem traduz** (`services/commerce/routing.ts`, editável no painel):
 
@@ -262,10 +289,27 @@ dados, faltam limites por IP e por aparelho.
 
 ## 9. Como ligar os pagamentos depois
 
-Para a venda por livro (seção 0): implementar `createCheckout` para o produto
-`order:<livro>:<pedido>` (valor = `order.priceBrl`), criar a rota do webhook chamando
-`applyPaymentEvent` e definir `CHECKOUT_MODE=live`. O resto já está pronto: o pedido
-pago inicia a tradução uma única vez, mesmo com avisos repetidos.
+Para a venda por livro (seção 0), tudo já está pronto menos o meio de pagamento:
+
+1. Abrir a conta no meio de pagamento (Mercado Pago é o mais simples no Brasil, com
+   Pix; Stripe também aceita Pix). **Isso exige sua autorização — nada foi criado.**
+2. Criar `services/billing/providers/mercadopago.ts` (ou `stripe.ts`) implementando
+   `PaymentProvider` (`services/billing/payment-types.ts`):
+   - `createCheckout` recebe produto, valor (`amountBrl`), descrição e as URLs de
+     volta, e devolve o endereço da página de pagamento;
+   - `parseWebhook` confere a assinatura do aviso e devolve um `PaymentEvent`.
+3. Registrar em `paymentProvider()` (`services/billing/payments.ts`).
+4. No meio de pagamento, cadastrar o webhook
+   `https://SEU-SITE/api/payments/webhook/mercadopago` (essa rota não pede a senha
+   do site; a autenticidade vem da assinatura).
+5. Definir `PAYMENT_PROVIDER=mercadopago`, `CHECKOUT_MODE=live` e `SITE_URL`.
+6. Testar antes com `PAYMENT_PROVIDER=simulado`, que percorre o mesmo caminho.
+
+**Assinatura (no futuro, se fizer sentido):** a arquitetura já prevê produtos
+recorrentes (`plan-plus`, `plan-pro`, `kind: "subscription"` no checkout e os eventos
+`subscription.started/renewed/canceled`). Se um dia houver assinatura, ela precisa
+aparecer com o preço mensal, a renovação automática e o cancelamento explicados
+antes do pagamento.
 
 Para créditos e planos (versão pública):
 

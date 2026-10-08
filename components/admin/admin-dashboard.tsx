@@ -21,13 +21,18 @@ interface Row {
   percent: number;
   words: number;
   level: LevelId | null;
-  order: { priceBrl: number; status: string; payment: string | null; words: number } | null;
+  order: { priceBrl: number; status: string; payment: string | null; paymentProvider: string | null; words: number; paidAt: string | null } | null;
   provider: { id: string; model: string } | null;
   runs: TranslationRun[];
   costUsd: number;
   costBrl: number;
   realCostBrl: number;
   revenueBrl: number;
+  tokens: number;
+  estimatedCostBrl: number | null;
+  netBrl: number;
+  profitBrl: number;
+  margin: number | null;
   stopCode: string | null;
   error: string | null;
   resumeAt: string | null;
@@ -66,7 +71,10 @@ interface Overview {
     betaValueBrl: number;
     costBrl: number;
     realCostBrl: number;
+    profitBrl: number;
+    priceBrl: number;
   };
+  payments: { wanted: string | null; label: string | null; implemented: boolean };
   books: Row[];
   routing: Record<LevelId, Service[]>;
   allProviders: Service[];
@@ -95,6 +103,20 @@ const STOP: Record<string, string> = {
 };
 
 const LEVEL: Record<LevelId, string> = { padrao: "Padrão", literaria: "Literária" };
+
+function paymentLabel(order: Row["order"]): string {
+  if (!order) return "sem pedido";
+  switch (order.status) {
+    case "awaiting_payment":
+      return "aguardando pagamento";
+    case "paid":
+      return order.payment === "beta" ? "confirmado no beta (sem cobrança)" : `pago${order.paymentProvider ? ` · ${order.paymentProvider}` : ""}`;
+    case "refunded":
+      return "reembolsado";
+    default:
+      return "cancelado";
+  }
+}
 
 function pct(v: number) {
   return `${Math.round(v * 100)}%`;
@@ -178,7 +200,8 @@ function Summary({ data }: { data: Overview }) {
   const t = data.totals;
   const beta = data.checkout === "beta";
   const income = beta ? t.betaValueBrl : t.revenueBrl;
-  const margin = income > 0 ? (income - t.realCostBrl) / income : null;
+  const margin = t.priceBrl > 0 ? t.profitBrl / t.priceBrl : null;
+  const p = data.payments;
   return (
     <section className="mt-10">
       <p className="text-[0.9375rem] leading-relaxed text-ink-2">
@@ -187,10 +210,14 @@ function Summary({ data }: { data: Overview }) {
             <strong className="font-medium text-ink">Beta:</strong> os clientes confirmam o pedido sem pagar (<code>CHECKOUT_MODE=beta</code>). Os
             valores abaixo mostram quanto os pedidos teriam rendido.
           </>
+        ) : p.implemented ? (
+          <>
+            <strong className="font-medium text-ink">Pagamentos ligados</strong> com {p.label}: a tradução só começa depois do pagamento confirmado.
+          </>
         ) : (
           <>
-            <strong className="font-medium text-ink">Pagamentos ligados</strong> (<code>CHECKOUT_MODE=live</code>): a tradução só começa depois do
-            pagamento.
+            <strong className="font-medium text-accent">Pagamentos ligados sem meio de pagamento</strong> (<code>CHECKOUT_MODE=live</code>
+            {p.wanted ? `, ${p.wanted} ainda não implementado` : ", PAYMENT_PROVIDER vazio"}): os clientes veem “Pagamentos em breve”.
           </>
         )}
       </p>
@@ -202,7 +229,11 @@ function Summary({ data }: { data: Overview }) {
           sub={beta ? `${t.paidBeta} confirmados no beta` : `${t.paidProvider} pagos`}
         />
         <Stat label="Custo real" value={brl(t.realCostBrl)} sub={`${brl(t.costBrl)} se tudo fosse pago`} />
-        <Stat label="Margem" value={margin === null ? "—" : pct(margin)} sub={margin === null ? "sem pedidos ainda" : brl(income - t.realCostBrl)} />
+        <Stat
+          label="Lucro estimado"
+          value={margin === null ? "—" : brl(t.profitBrl)}
+          sub={margin === null ? "sem pedidos ainda" : `margem de ${pct(margin)}, após taxas e impostos`}
+        />
       </dl>
     </section>
   );
@@ -229,8 +260,6 @@ function Books({ rows }: { rows: Row[] }) {
       <ul className="mt-3 divide-y divide-rule border-y border-rule">
         {rows.map((r) => {
           const expanded = open === r.id;
-          const income = r.order?.status === "paid" ? r.order.priceBrl : 0;
-          const margin = income > 0 ? (income - r.realCostBrl) / income : null;
           return (
             <li key={r.id}>
               <button
@@ -250,20 +279,24 @@ function Books({ rows }: { rows: Row[] }) {
                 </span>
                 <span className="shrink-0 text-right">
                   <span className="serif num block text-[1rem] text-ink">{r.order ? brl(r.order.priceBrl) : "—"}</span>
-                  <span className="num block text-[0.75rem] text-muted">
-                    {r.level ? LEVEL[r.level] : "sem pedido"}
-                    {r.order ? ` · ${r.order.status === "paid" ? (r.order.payment === "beta" ? "beta" : "pago") : "aguardando"}` : ""}
-                  </span>
+                  <span className="num block text-[0.75rem] text-muted">{r.level ? LEVEL[r.level] : "sem pedido"}</span>
                 </span>
                 <Chevron className={`mt-1.5 h-4 w-4 shrink-0 text-muted transition-transform ${expanded ? "rotate-180" : ""}`} />
               </button>
               {expanded && (
                 <div className="rise pb-6">
-                  <dl className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                    <Stat label="Palavras" value={formatNumber(r.words)} />
-                    <Stat label="Custo real" value={brl(r.realCostBrl)} sub={`${brl(r.costBrl)} pela tabela`} />
-                    <Stat label="Preço" value={r.order ? brl(r.order.priceBrl) : "—"} />
-                    <Stat label="Margem" value={margin === null ? "—" : pct(margin)} />
+                  <p className="text-[0.875rem] text-ink-2">
+                    Pagamento: <span className="text-ink">{paymentLabel(r.order)}</span>
+                    {r.order?.paidAt ? ` em ${when(r.order.paidAt)}` : ""}
+                  </p>
+                  <dl className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+                    <Stat label="Preço cobrado" value={r.order ? brl(r.order.priceBrl) : "—"} sub={`${formatNumber(r.words)} palavras`} />
+                    <Stat label="Custo estimado" value={r.estimatedCostBrl === null ? "—" : brl(r.estimatedCostBrl)} sub="IA, pela tabela" />
+                    <Stat label="Custo real" value={brl(r.realCostBrl)} sub={`${brl(r.costBrl)} se fosse pago`} />
+                    <Stat label="Tokens" value={formatNumber(r.tokens)} sub={r.provider && r.provider.id !== "demo" ? r.provider.model : undefined} />
+                    <Stat label="Líquido" value={r.order?.status === "paid" ? brl(r.netBrl) : "—"} sub="após taxas e impostos" />
+                    <Stat label="Lucro estimado" value={r.margin === null ? "—" : brl(r.profitBrl)} sub="líquido − custo real − custo fixo" />
+                    <Stat label="Margem" value={r.margin === null ? "—" : pct(r.margin)} />
                   </dl>
                   {r.error && (
                     <p className="mt-4 rounded-xl bg-paper-2 px-4 py-3 font-mono text-[0.75rem] leading-relaxed break-words text-ink-2">{r.error}</p>

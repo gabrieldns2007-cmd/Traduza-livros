@@ -10,7 +10,7 @@
 export const SESSION_COOKIE = "verso_session";
 export const SESSION_MAX_AGE = 60 * 60 * 24 * 180;
 
-async function hmac(secret: string, message: string): Promise<string> {
+export async function hmac(secret: string, message: string): Promise<string> {
   const enc = new TextEncoder();
   const key = await crypto.subtle.importKey("raw", enc.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
   const sig = await crypto.subtle.sign("HMAC", key, enc.encode(message));

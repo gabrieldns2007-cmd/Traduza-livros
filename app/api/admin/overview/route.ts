@@ -5,6 +5,8 @@ import { brlPerUsd } from "@/lib/billing/catalog";
 import { billingMode } from "@/lib/billing/mode";
 import { breakdown, OPERATIONS, SERVICE_LEVELS } from "@/lib/billing/pricing";
 import { checkoutMode } from "@/services/commerce/orders";
+import { paymentSetup } from "@/services/billing/payments";
+import { netFactor } from "@/lib/billing/catalog";
 import { routingFor } from "@/services/commerce/routing";
 import { isFreeProvider, quotaFor } from "@/services/quota/usage";
 import { jobRunner } from "@/services/processing/job-runner";
@@ -21,7 +23,13 @@ export async function GET() {
     // custo de verdade: só o que passou por serviço pago (os gratuitos não cobram)
     const realUsd = (m.runs ?? []).filter((r) => r.billing === "hosted").reduce((n, r) => n + (r.costUsd ?? 0), 0);
     const order = m.order ?? null;
-    const revenueBrl = order?.status === "paid" ? order.priceBrl : 0;
+    const paid = order?.status === "paid";
+    const revenueBrl = paid ? order.priceBrl : 0;
+    const tokens = (m.runs ?? []).reduce((n, r) => n + r.inputTokens + r.outputTokens, 0);
+    // conta do pedido: estimado na hora do pedido x real (o que de fato custou)
+    const estimate = order ? breakdown(order.words, order.level, order.priceBrl) : null;
+    const netBrl = paid ? order.priceBrl * netFactor() : 0;
+    const profitBrl = paid ? netBrl - realUsd * fx - OPERATIONS.fixedCostPerOrderBrl : 0;
     return {
       id: m.id,
       title: m.title,
@@ -29,13 +37,25 @@ export async function GET() {
       percent: percentOf(m),
       words: m.totals.words,
       level: m.level ?? null,
-      order: order && { priceBrl: order.priceBrl, status: order.status, payment: order.payment, words: order.words },
+      order: order && {
+        priceBrl: order.priceBrl,
+        status: order.status,
+        payment: order.payment,
+        paymentProvider: order.paymentProvider ?? null,
+        words: order.words,
+        paidAt: order.paidAt ?? null,
+      },
       provider: m.provider ?? null,
       runs: m.runs ?? [],
       costUsd,
       costBrl: costUsd * fx,
       realCostBrl: realUsd * fx,
       revenueBrl,
+      tokens,
+      estimatedCostBrl: estimate ? estimate.processingExpectedBrl : null,
+      netBrl,
+      profitBrl,
+      margin: paid && order.priceBrl > 0 ? profitBrl / order.priceBrl : null,
       stopCode: m.stopCode ?? null,
       error: m.error ?? null,
       resumeAt: m.resumeAt ?? null,
@@ -69,6 +89,7 @@ export async function GET() {
 
   return json({
     checkout: checkoutMode(),
+    payments: paymentSetup(),
     billing: billingMode(),
     totals: {
       books: rows.length,
@@ -80,6 +101,8 @@ export async function GET() {
       betaValueBrl: paid.filter((r) => r.order?.payment === "beta").reduce((n, r) => n + r.revenueBrl, 0),
       costBrl: rows.reduce((n, r) => n + r.costBrl, 0),
       realCostBrl: rows.reduce((n, r) => n + r.realCostBrl, 0),
+      profitBrl: paid.reduce((n, r) => n + r.profitBrl, 0),
+      priceBrl: paid.reduce((n, r) => n + r.revenueBrl, 0),
     },
     books: rows.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     routing,

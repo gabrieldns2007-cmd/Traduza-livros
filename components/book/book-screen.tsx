@@ -16,6 +16,8 @@ import { AboutBook } from "./about-book";
 import { PUBLIC_MODE } from "@/lib/mode";
 import { COMMERCE_STEPS, Steps } from "@/components/ui/steps";
 import { OrderPanel } from "@/components/commerce/order-panel";
+import { OrderProgress } from "@/components/commerce/order-progress";
+import { StageTrack } from "@/components/ui/stage-track";
 
 export function BookScreen({ initial, initialGlossary }: { initial: BookView; initialGlossary: GlossaryEntry[] }) {
   const router = useRouter();
@@ -97,19 +99,18 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
 
       {PUBLIC_MODE ? (
         <Steps current={book.status === "ready" ? 2 : 3} done={book.status === "done"} className="mt-8" />
-      ) : (
+      ) : book.status === "ready" ? (
         // compra de uma tradução: Enviar → Confirmar → Tradução → Baixar
-        <Steps
-          steps={COMMERCE_STEPS}
-          current={book.status === "ready" ? 2 : book.status === "done" ? 4 : 3}
-          done={book.status === "done"}
-          className="mt-8"
-        />
-      )}
+        <Steps steps={COMMERCE_STEPS} current={2} className="mt-8" />
+      ) : book.status === "done" ? (
+        // depois da compra, as etapas da própria tradução (Livro → … → Pronto)
+        <StageTrack current={4} done className="mt-8" />
+      ) : null}
 
       <div className="mt-8 sm:mt-10">
         {book.status === "ready" && (PUBLIC_MODE ? <StartPanel book={book} onStarted={setBook} /> : <OrderPanel book={book} onChange={setBook} />)}
-        {(active || book.status === "paused" || book.status === "error") && <ProgressPanel book={book} onAction={act} />}
+        {(active || book.status === "paused" || book.status === "error") &&
+          (PUBLIC_MODE ? <ProgressPanel book={book} onAction={act} /> : <OrderProgress book={book} onResume={() => act("resume")} />)}
         {book.status === "done" && <DonePanel book={book} onChange={setBook} onRetry={() => act("retry-failed")} />}
       </div>
 

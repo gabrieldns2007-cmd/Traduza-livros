@@ -1,121 +1,92 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/client";
-import { languageLabel } from "@/lib/languages";
-import { formatNumber } from "@/lib/format";
-import { brl } from "@/lib/money";
-import { Button } from "@/components/ui/button";
-import { Steps, COMMERCE_STEPS } from "@/components/ui/steps";
-import { ArrowLeft } from "@/components/ui/icons";
+import { ButtonLink } from "@/components/ui/button";
+import { Check } from "@/components/ui/icons";
 import type { Offer } from "./order-panel";
 
 /**
- * Passo “Pagar”: resumo do pedido e pagamento. Enquanto não há meio de
- * pagamento (beta), a confirmação não cobra nada e a tradução começa na hora.
+ * Volta do pagamento. O pedido só vira “pago” quando o meio de pagamento
+ * avisa o servidor (webhook) — o retorno do navegador não vale como prova.
+ * Por isso esta página espera a confirmação e então leva ao acompanhamento.
  */
 export function CheckoutView({ bookId }: { bookId: string }) {
   const router = useRouter();
   const [offer, setOffer] = useState<Offer | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [waited, setWaited] = useState(0);
   const [error, setError] = useState("");
+  const paid = offer?.order?.status === "paid";
 
   useEffect(() => {
-    api<{ offer: Offer }>(`/api/books/${bookId}/offer`)
-      .then(({ offer: o }) => {
-        // sem pedido (ou já pago): volta para o livro
-        if (!o.order || o.order.status !== "awaiting_payment") router.replace(`/livros/${bookId}`);
-        else setOffer(o);
-      })
-      .catch((e) => setError((e as Error).message));
+    let alive = true;
+    let tries = 0;
+    const check = async () => {
+      try {
+        const { offer: o } = await api<{ offer: Offer }>(`/api/books/${bookId}/offer`);
+        if (!alive) return;
+        // sem pedido: a confirmação fica na página do livro
+        if (!o.order) return router.replace(`/livros/${bookId}`);
+        setOffer(o);
+        if (o.order.status === "paid") return;
+      } catch (e) {
+        if (alive) setError((e as Error).message);
+      }
+      tries++;
+      setWaited(tries);
+      if (alive && tries < 45) timer = setTimeout(check, 2000);
+    };
+    let timer = setTimeout(check, 0);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
   }, [bookId, router]);
 
-  const pay = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      const r = await api<{ started: boolean; checkoutUrl?: string }>(`/api/books/${bookId}/order/confirm`, { method: "POST" });
-      if (r.checkoutUrl) window.location.href = r.checkoutUrl;
-      else router.push(`/livros/${bookId}`);
-    } catch (err) {
-      setError((err as Error).message);
-      setBusy(false);
-    }
-  };
-
-  if (error && !offer)
-    return (
-      <main className="mx-auto max-w-md px-5 pt-20 text-center">
-        <p className="text-[0.9375rem] text-accent">{error}</p>
-      </main>
-    );
-  if (!offer?.order) return <main className="mx-auto w-full max-w-[36rem] px-5 pt-10" aria-busy="true" />;
-
-  const level = offer.levels.find((l) => l.id === offer.order!.level);
-  const beta = offer.checkout.mode === "beta";
-  const canPay = beta || offer.checkout.payments;
+  // confirmado: segue sozinho para o acompanhamento
+  useEffect(() => {
+    if (!paid) return;
+    const t = setTimeout(() => router.replace(`/livros/${bookId}`), 3500);
+    return () => clearTimeout(t);
+  }, [paid, bookId, router]);
 
   return (
-    <main className="mx-auto w-full max-w-[36rem] px-5 pt-6 pb-28 sm:px-8 sm:pt-12">
-      <Link href={`/livros/${bookId}`} className="link inline-flex items-center gap-1.5 text-[0.875rem] text-muted hover:text-ink">
-        <ArrowLeft className="h-3.5 w-3.5" /> Voltar
-      </Link>
-      <Steps steps={COMMERCE_STEPS} current={2} className="mt-6" />
-
-      <h1 className="rise serif mt-8 text-[2.1rem] leading-[1.05] tracking-[-0.02em] text-ink sm:text-[2.6rem]">Confirme sua tradução</h1>
-
-      <section className="rise mt-7 rounded-[1.25rem] border border-rule px-5 py-6 sm:px-7" aria-label="Resumo do pedido">
-        <p className="serif text-[1.25rem] leading-snug text-ink">{offer.title}</p>
-        {offer.author && <p className="serif text-[1rem] text-ink-2 italic">{offer.author}</p>}
-        <dl className="mt-5 space-y-2.5 border-t border-rule pt-4 text-[0.9375rem]">
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted">Idiomas</dt>
-            <dd className="text-right text-ink">
-              {languageLabel(offer.sourceLanguage ?? offer.detectedLanguage, "Original")} → {languageLabel(offer.targetLanguage)}
-            </dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted">Tamanho</dt>
-            <dd className="num text-ink">{formatNumber(offer.totalWords)} palavras</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted">Tradução</dt>
-            <dd className="text-ink">{level?.label ?? "Padrão"}</dd>
-          </div>
-          <div className="flex justify-between gap-4">
-            <dt className="text-muted">Você recebe</dt>
-            <dd className="text-right text-ink">EPUB e PDF · revisão online</dd>
-          </div>
-        </dl>
-        <div className="mt-5 flex items-baseline justify-between gap-4 border-t border-rule pt-4">
-          <span className="text-[1rem] text-ink">Total</span>
-          <span className="serif num text-[2rem] leading-none text-ink">{brl(offer.order.priceBrl)}</span>
+    <main className="mx-auto flex min-h-[70dvh] w-full max-w-[30rem] flex-col justify-center px-5 pb-24 text-center">
+      {paid ? (
+        <div className="rise">
+          <span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-ink text-paper">
+            <Check className="h-6 w-6" />
+          </span>
+          <h1 className="serif mt-6 text-[2rem] leading-tight tracking-[-0.02em] text-ink">
+            {offer?.order?.payment === "beta" ? "Pedido confirmado." : "Pagamento confirmado."}
+          </h1>
+          <p className="mt-2 text-[1.0625rem] text-ink-2">Estamos preparando sua tradução.</p>
+          {offer && <p className="serif mt-6 text-[1.125rem] text-ink italic">{offer.title}</p>}
+          <ButtonLink href={`/livros/${bookId}`} className="mt-8 w-full">
+            Acompanhar a tradução
+          </ButtonLink>
+          <p className="mt-3 text-[0.8125rem] text-muted">Você pode fechar esta página e voltar quando quiser.</p>
         </div>
-      </section>
-
-      <section className="rise mt-6">
-        {beta ? (
-          <p className="rounded-2xl bg-paper-2 px-5 py-4 text-[0.9375rem] leading-relaxed text-ink-2">
-            <strong className="font-medium text-ink">Grátis durante o beta.</strong> Enquanto o Verso está em fase de testes, as traduções são por
-            nossa conta — nada será cobrado.
+      ) : waited >= 45 ? (
+        <div className="rise">
+          <h1 className="serif text-[1.75rem] leading-tight text-ink">Ainda não recebemos a confirmação.</h1>
+          <p className="mt-3 text-[0.9375rem] leading-relaxed text-ink-2">
+            Se você concluiu o pagamento, a confirmação pode levar alguns minutos — a tradução começa sozinha assim que ela chegar. Nada é cobrado
+            duas vezes.
           </p>
-        ) : !offer.checkout.payments ? (
-          <p className="rounded-2xl bg-paper-2 px-5 py-4 text-[0.9375rem] text-ink-2">Os pagamentos abrem em breve.</p>
-        ) : null}
-        <Button onClick={pay} disabled={busy || !canPay} className="mt-5 w-full">
-          {busy ? "Um instante…" : beta ? "Confirmar e começar a tradução" : `Pagar ${brl(offer.order.priceBrl)}`}
-        </Button>
-        <p className="mt-3 text-center text-[0.8125rem] leading-relaxed text-muted">
-          A tradução começa assim que você confirmar. Você acompanha o progresso aqui e recebe o livro em EPUB e PDF.
-        </p>
-        {error && (
-          <p className="mt-4 text-center text-[0.9375rem] text-accent" role="alert">
-            {error}
-          </p>
-        )}
-      </section>
+          <ButtonLink href={`/livros/${bookId}`} variant="secondary" className="mt-8 w-full">
+            Voltar ao livro
+          </ButtonLink>
+        </div>
+      ) : (
+        <div aria-live="polite">
+          <span className="mx-auto block h-10 w-10 animate-spin rounded-full border-2 border-rule border-t-ink" aria-hidden />
+          <h1 className="serif mt-6 text-[1.75rem] leading-tight text-ink">Confirmando seu pagamento…</h1>
+          <p className="mt-2 text-[0.9375rem] text-ink-2">Leva só alguns segundos.</p>
+          {error && <p className="mt-4 text-[0.875rem] text-accent">{error}</p>}
+        </div>
+      )}
     </main>
   );
 }

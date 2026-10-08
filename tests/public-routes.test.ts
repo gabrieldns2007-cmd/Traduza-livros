@@ -8,8 +8,15 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import { localRoutePaths } from "@/lib/browser/backend";
 
-// só existem no servidor próprio: senha do site, repasse e painel administrativo
-const SERVER_ONLY = ["/api/auth", "/api/relay/[service]/[...path]", "/api/admin/auth", "/api/admin/overview", "/api/admin/settings"];
+// só existem no servidor próprio: senha do site, repasse, painel administrativo e avisos de pagamento
+const SERVER_ONLY = [
+  "/api/auth",
+  "/api/relay/[service]/[...path]",
+  "/api/admin/auth",
+  "/api/admin/overview",
+  "/api/admin/settings",
+  "/api/payments/webhook/[provider]",
+];
 
 function apiRoutes(dir = path.join(process.cwd(), "app", "api"), prefix = "/api"): string[] {
   const out: string[] = [];

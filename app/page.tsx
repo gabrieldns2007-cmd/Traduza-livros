@@ -1,14 +1,26 @@
 import { connection } from "next/server";
 import { readSettings } from "@/lib/storage";
 import { config } from "@/lib/config";
-import { defaultProviderId } from "@/lib/config";
-import { TranslateFlow } from "@/components/home/translate-flow";
 import { PUBLIC_MODE } from "@/lib/mode";
 import { PublicHomeFlow } from "@/components/public/loaders";
+import { Landing } from "@/components/home/landing";
+import { levelOffered } from "@/services/commerce/routing";
 
 export default async function HomePage() {
-  const settings = PUBLIC_MODE ? null : (await connection(), await readSettings());
+  // serviço comercial: a página inicial é a página de venda
+  if (!PUBLIC_MODE) {
+    await connection();
+    const settings = await readSettings();
+    return (
+      <Landing
+        targetLanguage={settings.targetLanguage}
+        maxUploadMb={Math.round(config.maxUploadBytes / 1024 / 1024)}
+        literaria={levelOffered("literaria", settings)}
+      />
+    );
+  }
 
+  // versão pública: cada pessoa usa a própria chave, no navegador
   return (
     <main className="mx-auto w-full max-w-[42rem] px-5 pt-10 pb-24 sm:px-8 sm:pt-20">
       <section className="rise">
@@ -16,27 +28,12 @@ export default async function HomePage() {
           Traduza seu livro<span className="text-accent">.</span>
         </h1>
         <p className="serif mt-5 max-w-[32rem] text-[1.25rem] leading-[1.45] text-ink-2 sm:mt-6 sm:text-[1.375rem]">
-          {PUBLIC_MODE
-            ? "Transforme um livro inteiro em outro idioma, preservando capítulos, estrutura e formatação."
-            : "Envie o livro, veja o preço na hora e receba a tradução completa em EPUB e PDF."}
+          Transforme um livro inteiro em outro idioma, preservando capítulos, estrutura e formatação.
         </p>
       </section>
 
       <section className="rise mt-10 sm:mt-14" style={{ animationDelay: "80ms" }}>
-        {settings ? (
-          <TranslateFlow
-            defaults={{
-              targetLanguage: settings.targetLanguage,
-              dialogueStyle: settings.dialogueStyle,
-              deepContext: settings.deepContext,
-              instructions: settings.instructions,
-              maxUploadMb: Math.round(config.maxUploadBytes / 1024 / 1024),
-              demo: defaultProviderId(settings) === "demo",
-            }}
-          />
-        ) : (
-          <PublicHomeFlow />
-        )}
+        <PublicHomeFlow />
       </section>
 
       <section className="mt-20 grid gap-8 border-t border-rule pt-10 sm:grid-cols-3 sm:gap-6">

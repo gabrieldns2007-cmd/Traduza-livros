@@ -24,13 +24,13 @@ Para usar fora de casa, rode em um servidor (VPS, Railway, Fly.io, Render…) co
 
 ### Vender traduções (serviço comercial)
 
-O cliente compra **a tradução de um livro**, não “IA”: envia o arquivo, vê o preço em reais, confirma e acompanha. Ele nunca vê qual serviço de IA traduz, tokens ou custos.
+O cliente compra **a tradução de um livro**, não “IA”: ele nunca vê qual serviço de IA traduz, tokens ou custos.
 
-1. **Enviar** o livro → 2. **Confirmar** (idiomas, tipo de tradução e preço; amostra grátis opcional) → **Pagamento** → 3. **Tradução** (continua sozinha, inclusive quando a cota de um serviço gratuito acaba) → 4. **Baixar** EPUB e PDF, com revisão online.
+**Página inicial** (botão _Traduzir meu livro_) → **Confirmar** (idioma, tipo de tradução, preço e o que está incluído) → **Pagar e traduzir** → “Pagamento confirmado.” → **Acompanhamento** (Livro → Processando → Traduzindo → Revisando → Pronto) → **Baixar** EPUB e PDF.
 
 - **Preços** (`/precos`): Padrão R$ 0,39 e Literária R$ 1,49 por mil palavras + R$ 1,90 por pedido, mínimo R$ 9,90 (ex.: livro de 44 mil palavras = R$ 19,90 / R$ 67,90). Conta em `lib/billing/pricing.ts`; um teste impede preços que deem prejuízo.
-- **Painel** (`/admin`, senha `ADMIN_PASSWORD`): pedidos, custo real, margem, erros técnicos, ordem dos serviços de IA de cada tipo de tradução e as chaves.
-- **Pagamentos:** ainda não há meio de pagamento. Com `CHECKOUT_MODE=beta` (padrão) o cliente confirma sem pagar. Veja `docs/monetizacao.md`.
+- **Painel** (`/admin`, senha `ADMIN_PASSWORD`): pedidos, status do pagamento, serviço e modelo, tokens, custo estimado e real, preço, lucro e margem, erros técnicos, ordem dos serviços de IA de cada tipo de tradução e as chaves.
+- **Pagamentos:** nenhum meio de pagamento real está ligado. Com `CHECKOUT_MODE=beta` (padrão) o cliente confirma sem pagar. Para testar a experiência de pagamento sem dinheiro: `CHECKOUT_MODE=live` e `PAYMENT_PROVIDER=simulado`. Veja `docs/monetizacao.md`.
 
 ### Produção
 

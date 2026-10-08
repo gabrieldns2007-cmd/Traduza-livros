@@ -13,7 +13,8 @@ import { config } from "@/lib/config";
 import { DEFAULT_SETTINGS, store, writeSettings } from "@/lib/storage";
 import { jobRunner } from "@/services/processing/job-runner";
 import { confirmOrder, offerFor, placeOrder } from "@/services/commerce/orders";
-import { applyPaymentEvent } from "@/services/billing/payments";
+import { applyPaymentEvent, paymentProvider } from "@/services/billing/payments";
+import { POST as webhook } from "@/app/api/payments/webhook/[provider]/route";
 import { recordExhausted } from "@/services/quota/usage";
 import { routeProvider } from "@/services/commerce/routing";
 import { viewOf } from "@/lib/api";
@@ -88,6 +89,8 @@ beforeEach(async () => {
 
 afterEach(() => {
   delete process.env.CHECKOUT_MODE;
+  delete process.env.PAYMENT_PROVIDER;
+  delete process.env.ADMIN_PASSWORD;
 });
 
 describe("compra de uma tradução", () => {
@@ -145,6 +148,30 @@ describe("compra de uma tradução", () => {
     expect(later.ok).toBe(false);
     // a Literária (paga) só existe quando o administrador liga
     expect((await routeProvider("literaria", DEFAULT_SETTINGS)).ok).toBe(false);
+  });
+
+  it("revisão automática: refaz os trechos que voltaram sem tradução", async () => {
+    class EchoFirst extends Fake {
+      async translateBatch(input: BatchInput): Promise<BatchOutput> {
+        const out = await super.translateBatch(input);
+        // os 2 primeiros pedidos “esquecem” de traduzir (devolvem o original)
+        if (this.calls <= 2) for (const sg of input.segments) out.translations.set(sg.id, sg.text);
+        return out;
+      }
+    }
+    const provider = new EchoFirst("gemini");
+    jobRunner.providerFactory = () => provider;
+    const id = await book(4);
+    await placeOrder((await store.get(id))!, "padrao", {});
+    await confirmOrder((await store.get(id))!, "http://localhost");
+    const m = await until(id, ["done", "paused", "error"]);
+    expect(m.status).toBe("done");
+    expect(m.review!.segments).toBeGreaterThan(0);
+    expect(m.review!.finishedAt).toBeTruthy();
+    for (const d of m.docs) {
+      const doc = await store.readDoc(id, d.id);
+      for (const sg of doc.segments) if (sg.src.includes("keeper")) expect(sg.out).toMatch(/^PT /);
+    }
   });
 
   it("cota de um serviço gratuito acaba: segue sozinho com o próximo, sem perder nada", async () => {
@@ -205,5 +232,57 @@ describe("compra de uma tradução", () => {
     expect(m.status).toBe("done");
     expect(m.order!.payment).toBe("provider");
     expect(m.order!.externalId).toBe("pay_1");
+  });
+
+  it("pagamento simulado: página de pagamento → aviso assinado → tradução começa (sem dinheiro)", async () => {
+    process.env.CHECKOUT_MODE = "live";
+    process.env.PAYMENT_PROVIDER = "simulado";
+    jobRunner.providerFactory = (id) => new Fake(id);
+    const id = await book(1);
+    const order = await placeOrder((await store.get(id))!, "padrao", {});
+    const res = await confirmOrder((await store.get(id))!, "https://verso.exemplo");
+    expect(res.started).toBe(false);
+    expect(res.checkoutUrl).toMatch(/^\/pagamento\/simulado\?s=/);
+    const token = decodeURIComponent(res.checkoutUrl!.split("s=")[1]);
+    const call = (body: unknown, headers: Record<string, string> = {}) =>
+      webhook(new Request("http://x/api/payments/webhook/simulado", { method: "POST", headers, body: JSON.stringify(body) }), {
+        params: Promise.resolve({ provider: "simulado" }),
+      });
+
+    // sessão alterada: recusada
+    expect((await call({ s: token.replace(/^./, "x"), result: "approved" })).status).toBe(400);
+    // com senha de administrador, só o administrador aprova
+    process.env.ADMIN_PASSWORD = "segredo";
+    expect((await call({ s: token, result: "approved" })).status).toBe(403);
+    delete process.env.ADMIN_PASSWORD;
+    // ainda não pago: a tradução não começou
+    expect((await store.get(id))!.order!.status).toBe("awaiting_payment");
+
+    const ok = await call({ s: token, result: "approved" });
+    expect(ok.status).toBe(200);
+    expect(((await ok.json()) as { applied: boolean }).applied).toBe(true);
+    // reenvio do mesmo aviso: ignorado
+    expect(((await (await call({ s: token, result: "approved" })).json()) as { applied: boolean }).applied).toBe(false);
+    const m = await until(id, ["done", "paused", "error"]);
+    expect(m.status).toBe("done");
+    expect(m.order!.payment).toBe("provider");
+    expect(m.order!.paymentProvider).toBe("simulado");
+    expect(m.order!.priceBrl).toBe(order.priceBrl);
+  });
+
+  it("aviso de pagamento com valor menor que o preço não libera a tradução", async () => {
+    process.env.CHECKOUT_MODE = "live";
+    const id = await book(1);
+    const order = await placeOrder((await store.get(id))!, "padrao", {});
+    const applied = await applyPaymentEvent({
+      kind: "purchase.completed",
+      accountId: "local",
+      productId: `order:${id}:${order.id}`,
+      externalId: "pay_baixo",
+      amountBrl: order.priceBrl - 5,
+    });
+    expect(applied).toBe(false);
+    expect((await store.get(id))!.order!.status).toBe("awaiting_payment");
+    expect(paymentProvider()).toBeNull();
   });
 });

@@ -1,9 +1,20 @@
 /** Barra de progresso fina, com brilho discreto enquanto está ativa. */
-export function ProgressBar({ value, active = false, className = "" }: { value: number; active?: boolean; className?: string }) {
+export function ProgressBar({
+  value,
+  active = false,
+  thick = false,
+  className = "",
+}: {
+  value: number;
+  active?: boolean;
+  /** barra mais grossa (acompanhamento do cliente) */
+  thick?: boolean;
+  className?: string;
+}) {
   const v = Math.max(0, Math.min(100, value));
   return (
     <div
-      className={`relative h-[3px] w-full overflow-hidden rounded-full bg-rule ${className}`}
+      className={`relative ${thick ? "h-2.5" : "h-[3px]"} w-full overflow-hidden rounded-full bg-rule ${className}`}
       role="progressbar"
       aria-valuemin={0}
       aria-valuemax={100}

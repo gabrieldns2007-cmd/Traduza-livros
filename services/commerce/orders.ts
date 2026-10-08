@@ -6,8 +6,9 @@
  *
  * Enquanto não há meio de pagamento (CHECKOUT_MODE=beta, o padrão), confirmar
  * o pedido não cobra nada: ele fica registrado como “beta”. Com
- * CHECKOUT_MODE=live, a confirmação abre o pagamento e a tradução só começa
- * quando o meio de pagamento avisa que foi pago (webhook).
+ * CHECKOUT_MODE=live, a confirmação abre o pagamento do meio escolhido em
+ * PAYMENT_PROVIDER e a tradução só começa quando ele avisa que foi pago
+ * (webhook). PAYMENT_PROVIDER=simulado testa tudo isso sem dinheiro.
  */
 import type { BookMeta, BookOrder } from "@/types/book";
 import { store, readSettings } from "@/lib/storage";
@@ -116,26 +117,53 @@ export async function confirmOrder(meta: BookMeta, origin: string): Promise<{ st
   const { url } = await provider.createCheckout({
     accountId: "local",
     productId: `order:${meta.id}:${order.id}`,
-    successUrl: `${origin}/livros/${meta.id}?pago=1`,
-    cancelUrl: `${origin}/livros/${meta.id}/pagamento`,
+    kind: "payment",
+    amountBrl: order.priceBrl,
+    description: `Tradução do livro “${meta.title}”`,
+    // a volta do pagamento só mostra “confirmando…”: o pedido vira pago pelo aviso (webhook)
+    successUrl: `${origin}/livros/${meta.id}/pagamento?retorno=1`,
+    cancelUrl: `${origin}/livros/${meta.id}`,
   });
   return { started: false, checkoutUrl: url };
 }
 
 /** Pedido pago (beta ou aviso do meio de pagamento): começa a tradução. Idempotente. */
-export async function markPaid(bookId: string, orderId: string, opts: { payment: "beta" | "provider"; externalId?: string }): Promise<boolean> {
+export async function markPaid(
+  bookId: string,
+  orderId: string,
+  opts: { payment: "beta" | "provider"; externalId?: string; amountBrl?: number },
+): Promise<boolean> {
   const meta = await store.get(bookId);
   if (!meta?.order || meta.order.id !== orderId) return false;
-  if (meta.order.status === "paid") return false;
+  if (meta.order.status !== "awaiting_payment") return false;
+  // aviso com valor menor que o preço do pedido: não libera a tradução
+  if (opts.payment === "provider" && (opts.amountBrl ?? 0) + 0.005 < meta.order.priceBrl) {
+    console.warn(`[pedido] ${bookId}/${orderId}: pagamento de R$ ${opts.amountBrl} menor que o preço R$ ${meta.order.priceBrl}; ignorado`);
+    return false;
+  }
   await store.update(bookId, (m) => {
     if (!m.order) return;
     m.order.status = "paid";
     m.order.payment = opts.payment;
     m.order.paidAt = new Date().toISOString();
+    if (opts.payment === "provider") m.order.paymentProvider = process.env.PAYMENT_PROVIDER || undefined;
     if (opts.externalId) m.order.externalId = opts.externalId;
     // o serviço é escolhido por dentro, conforme o tipo de tradução
     m.provider = undefined;
   });
   await jobRunner.start(bookId);
+  return true;
+}
+
+/** Reembolso avisado pelo meio de pagamento: registra no pedido (a tradução já feita fica com o cliente). */
+export async function markRefunded(bookId: string, orderId: string, externalId: string): Promise<boolean> {
+  const meta = await store.get(bookId);
+  if (!meta?.order || meta.order.id !== orderId || meta.order.status === "refunded") return false;
+  await store.update(bookId, (m) => {
+    if (!m.order) return;
+    m.order.status = "refunded";
+    m.order.refundedAt = new Date().toISOString();
+    m.order.externalId ??= externalId;
+  });
   return true;
 }

@@ -30,7 +30,7 @@ export interface FlowDefaults {
   demo: boolean;
 }
 
-function uploadWithProgress(file: File, target: string, source: string, onProgress: (p: number) => void): Promise<BookSummary> {
+export function uploadWithProgress(file: File, target: string, source: string, onProgress: (p: number) => void): Promise<BookSummary> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", "/api/books");

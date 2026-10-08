@@ -1,50 +1,62 @@
 /**
- * Preparação para pagamentos — NENHUM meio de pagamento está ligado.
+ * Pagamentos — a arquitetura está pronta, mas NENHUM meio de pagamento real
+ * está ligado (nada é cobrado).
  *
- * Quando for a hora (Stripe, Mercado Pago, Pix…), basta implementar
- * `PaymentProvider` para o meio escolhido. O resto do Verso só conhece
- * eventos normalizados (`PaymentEvent`), aplicados por `applyPaymentEvent`:
+ * O Verso vende principalmente a TRADUÇÃO DE UM LIVRO (pagamento único,
+ * produto “order:<livro>:<pedido>”). Pacotes de créditos e assinaturas
+ * (“plan-…”) também estão previstos, para o futuro.
  *
- *   tela “Comprar” → createCheckout → página do meio de pagamento
- *   meio de pagamento → webhook → parseWebhook → applyPaymentEvent → carteira
+ * Para ligar um meio de pagamento (Mercado Pago, Stripe…), implemente
+ * `PaymentProvider` em services/billing/providers/ e registre em
+ * `paymentProvider()`. O resto do Verso só conhece eventos normalizados
+ * (`PaymentEvent`), aplicados por `applyPaymentEvent`:
  *
- * Créditos só entram pelo webhook confirmado (nunca pelo retorno do navegador),
- * e cada evento é aplicado uma única vez (idempotência por externalId).
+ *   “Pagar e traduzir” → createCheckout → página do meio de pagamento
+ *   meio de pagamento → POST /api/payments/webhook/<id> → parseWebhook
+ *     → applyPaymentEvent → pedido pago → a tradução começa sozinha
+ *
+ * Regras:
+ *  - o pedido só vira “pago” pelo aviso (webhook) validado — nunca pelo
+ *    retorno do navegador;
+ *  - cada aviso é aplicado uma única vez (idempotência por externalId);
+ *  - um aviso com valor menor que o preço do pedido é ignorado.
  */
-import { PACKS, PLANS, type PlanId } from "@/lib/billing/catalog";
+import { PACKS, PLANS } from "@/lib/billing/catalog";
 import { wallet } from "./wallet";
+import type { PaymentEvent, PaymentProvider } from "./payment-types";
+import { simulatedProvider } from "./providers/simulated";
 
-/** O que pode ser vendido: a tradução de um livro, um pacote de créditos ou um plano mensal. */
-export type ProductId = `order:${string}:${string}` | (typeof PACKS)[number]["id"] | `plan-${Exclude<PlanId, "free">}`;
+export type { CheckoutRequest, PaymentEvent, PaymentProvider, ProductId } from "./payment-types";
+export { PaymentError } from "./payment-types";
 
-export interface PaymentEvent {
-  kind: "purchase.completed" | "subscription.started" | "subscription.renewed" | "subscription.canceled" | "refund";
-  /** conta no Verso (no servidor próprio: "local"; na versão pública: o id da conta Google) */
-  accountId: string;
-  productId: string;
-  /** id do pagamento no meio de pagamento — chave de idempotência */
-  externalId: string;
-  amountBrl: number;
-}
+/**
+ * Meios de pagamento previstos. Só o simulado está implementado; os outros
+ * entram quando houver conta no meio de pagamento (e sua autorização).
+ */
+export const PAYMENT_PROVIDERS = [
+  { id: "simulado", label: "Pagamento simulado (teste, sem dinheiro)", implemented: true },
+  { id: "mercadopago", label: "Mercado Pago (Pix, cartão, boleto)", implemented: false },
+  { id: "stripe", label: "Stripe (cartão, Pix)", implemented: false },
+] as const;
 
-export interface CheckoutRequest {
-  accountId: string;
-  productId: ProductId;
-  successUrl: string;
-  cancelUrl: string;
-}
-
-export interface PaymentProvider {
-  id: string;
-  /** cria a sessão de pagamento e devolve o endereço para onde mandar a pessoa */
-  createCheckout(req: CheckoutRequest): Promise<{ url: string }>;
-  /** valida a assinatura do webhook e traduz para um evento do Verso (null = ignorar) */
-  parseWebhook(request: Request): Promise<PaymentEvent | null>;
-}
-
-/** Nenhum meio de pagamento configurado: a loja mostra “em breve”. */
+/** O meio de pagamento escolhido em PAYMENT_PROVIDER — null se nenhum (ou não implementado). */
 export function paymentProvider(): PaymentProvider | null {
-  return null;
+  switch (process.env.PAYMENT_PROVIDER) {
+    case "simulado":
+      return simulatedProvider;
+    // a implementar quando houver conta (e sua autorização):
+    // case "mercadopago": return mercadoPagoProvider;
+    // case "stripe": return stripeProvider;
+    default:
+      return null;
+  }
+}
+
+/** Situação dos pagamentos, para o painel administrativo. */
+export function paymentSetup() {
+  const wanted = process.env.PAYMENT_PROVIDER || null;
+  const info = PAYMENT_PROVIDERS.find((p) => p.id === wanted);
+  return { wanted, label: info?.label ?? null, implemented: Boolean(info?.implemented), available: PAYMENT_PROVIDERS };
 }
 
 /**
@@ -56,7 +68,11 @@ export async function applyPaymentEvent(event: PaymentEvent): Promise<boolean> {
   const order = /^order:([a-z0-9-]+):(ord_[\w-]+)$/.exec(event.productId);
   if (order && event.kind === "purchase.completed") {
     const { markPaid } = await import("@/services/commerce/orders");
-    return markPaid(order[1], order[2], { payment: "provider", externalId: event.externalId });
+    return markPaid(order[1], order[2], { payment: "provider", externalId: event.externalId, amountBrl: event.amountBrl });
+  }
+  if (order && event.kind === "refund") {
+    const { markRefunded } = await import("@/services/commerce/orders");
+    return markRefunded(order[1], order[2], event.externalId);
   }
   const pack = PACKS.find((p) => p.id === event.productId);
   if (pack && event.kind === "purchase.completed") {

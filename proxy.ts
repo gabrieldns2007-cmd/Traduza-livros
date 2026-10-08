@@ -28,6 +28,9 @@ export async function proxy(request: NextRequest) {
   }
   if (!authEnabled()) return NextResponse.next();
   if (pathname === "/entrar" || pathname === "/api/auth") return NextResponse.next();
+  // avisos do meio de pagamento: ele não tem a senha do site; a autenticidade é
+  // conferida pela assinatura do aviso (parseWebhook)
+  if (pathname.startsWith("/api/payments/webhook/")) return NextResponse.next();
   if (await isValidSession(request.cookies.get(SESSION_COOKIE)?.value)) return NextResponse.next();
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "Acesso protegido por senha." }, { status: 401 });

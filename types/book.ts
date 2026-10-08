@@ -169,11 +169,14 @@ export interface BookOrder {
   level: "padrao" | "literaria";
   words: number;
   priceBrl: number;
-  status: "awaiting_payment" | "paid" | "canceled";
+  status: "awaiting_payment" | "paid" | "canceled" | "refunded";
   /** "beta": confirmado sem cobrança durante o beta; "provider": pago pelo meio de pagamento */
   payment: "beta" | "provider" | null;
+  /** meio de pagamento usado (ex.: "simulado", "mercadopago") */
+  paymentProvider?: string;
   createdAt: string;
   paidAt?: string;
+  refundedAt?: string;
   /** id do pagamento no meio de pagamento */
   externalId?: string;
 }
@@ -226,6 +229,11 @@ export interface BookMeta {
   order?: BookOrder;
   /** pausada à espera de cota: quando continua sozinha (ISO) */
   resumeAt?: string;
+  /**
+   * revisão automática ao fim da tradução (pedidos de cliente): refaz os trechos
+   * que falharam e os que voltaram iguais ao original
+   */
+  review?: { startedAt: string; finishedAt?: string; segments: number };
   /** histórico de execuções (custo real por tradução) */
   runs?: TranslationRun[];
   usage: { inputTokens: number; outputTokens: number };

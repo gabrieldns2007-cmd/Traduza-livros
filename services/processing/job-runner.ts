@@ -16,6 +16,7 @@ import { activeRunIds, BillingStop, RunLedger } from "@/services/billing/run-led
 import { wallet } from "@/services/billing/wallet";
 import { routeProvider, type Route } from "@/services/commerce/routing";
 import { toPlainText } from "@/lib/markup";
+import { findLanguage } from "@/lib/languages";
 import { mergeCandidates } from "@/services/glossary/glossary";
 import { createProvider, type TranslationProvider } from "@/services/translation";
 import { ProviderError } from "@/services/translation/llm/types";
@@ -422,59 +423,78 @@ class JobRunner {
       });
 
       // várias passagens: capítulos marcados para retradução durante a execução também entram
-      for (let pass = 0; pass < 3; pass++) {
-        const fresh = (await store.get(bookId))!;
-        const todo = fresh.chapters.filter((c) => c.status !== "done");
-        if (!todo.length || inner.signal.aborted) break;
+      const translatePending = async () => {
+        for (let pass = 0; pass < 3; pass++) {
+          const fresh = (await store.get(bookId))!;
+          const todo = fresh.chapters.filter((c) => c.status !== "done");
+          if (!todo.length || inner.signal.aborted) break;
 
-        // capítulos pequenos e consecutivos vão juntos no mesmo pedido (menos chamadas)
-        const groups: (typeof todo)[] = [];
-        let group: typeof todo = [];
-        let chars = 0;
-        for (const c of todo) {
-          const n = await pendingChars(bookId, c);
-          if (group.length && (chars + n > provider.limits.batchChars || group.length >= 40)) {
-            groups.push(group);
-            group = [];
-            chars = 0;
-          }
-          group.push(c);
-          chars += n;
-        }
-        if (group.length) groups.push(group);
-
-        await mapLimit(
-          groups,
-          provider.limits.concurrency,
-          async (chapters) => {
-            if (inner.signal.aborted) return;
-            try {
-              await store.update(bookId, (m) => {
-                for (const ch of chapters) {
-                  const c = m.chapters.find((x) => x.id === ch.id)!;
-                  c.status = "translating";
-                  if (!m.activeChapterIds.includes(c.id)) m.activeChapterIds.push(c.id);
-                }
-              });
-              const latest = (await store.get(bookId))!;
-              const ids = new Set(chapters.map((c) => c.id));
-              await processChapters(
-                latest,
-                latest.chapters.filter((c) => ids.has(c.id)),
-                provider,
-                hooks,
-              );
-              for (const c of chapters) await this.finishChapter(bookId, c.id, provider);
-            } catch (err) {
-              if (!inner.signal.aborted) inner.abort(err);
-              throw err;
+          // capítulos pequenos e consecutivos vão juntos no mesmo pedido (menos chamadas)
+          const groups: (typeof todo)[] = [];
+          let group: typeof todo = [];
+          let chars = 0;
+          for (const c of todo) {
+            const n = await pendingChars(bookId, c);
+            if (group.length && (chars + n > provider.limits.batchChars || group.length >= 40)) {
+              groups.push(group);
+              group = [];
+              chars = 0;
             }
-          },
-          inner.signal,
-        );
-      }
+            group.push(c);
+            chars += n;
+          }
+          if (group.length) groups.push(group);
 
+          await mapLimit(
+            groups,
+            provider.limits.concurrency,
+            async (chapters) => {
+              if (inner.signal.aborted) return;
+              try {
+                await store.update(bookId, (m) => {
+                  for (const ch of chapters) {
+                    const c = m.chapters.find((x) => x.id === ch.id)!;
+                    c.status = "translating";
+                    if (!m.activeChapterIds.includes(c.id)) m.activeChapterIds.push(c.id);
+                  }
+                });
+                const latest = (await store.get(bookId))!;
+                const ids = new Set(chapters.map((c) => c.id));
+                await processChapters(
+                  latest,
+                  latest.chapters.filter((c) => ids.has(c.id)),
+                  provider,
+                  hooks,
+                );
+                for (const c of chapters) await this.finishChapter(bookId, c.id, provider);
+              } catch (err) {
+                if (!inner.signal.aborted) inner.abort(err);
+                throw err;
+              }
+            },
+            inner.signal,
+          );
+        }
+      };
+      await translatePending();
       if (signal.aborted) throw signal.reason ?? new Error("aborted");
+
+      // revisão automática (pedido de cliente): uma rodada que refaz os trechos que falharam
+      // e os que voltaram iguais ao original. Se a execução for retomada no meio, só termina
+      // o que ficou pendente (não marca de novo).
+      const reviewing = (await store.get(bookId))!;
+      if (reviewing.level && !reviewing.review?.finishedAt) {
+        const segments = reviewing.review ? 0 : await markForReview(bookId);
+        await store.update(bookId, (m) => {
+          m.phase = "Revisando";
+          m.review = { startedAt: m.review?.startedAt ?? new Date().toISOString(), segments: m.review?.segments ?? segments };
+        });
+        if (segments) await translatePending();
+        if (signal.aborted) throw signal.reason ?? new Error("aborted");
+        await store.update(bookId, (m) => {
+          if (m.review) m.review.finishedAt = new Date().toISOString();
+        });
+      }
 
       // capítulos que ficaram prontos sem passar por aqui (ex.: inteiros na amostra): falta o título traduzido
       for (const c of (await store.get(bookId))!.chapters) if (c.status === "done" && !c.translatedTitle) await this.finishChapter(bookId, c.id);
@@ -630,6 +650,41 @@ class JobRunner {
       m.activeChapterIds = m.activeChapterIds.filter((id) => id !== chapterId);
     });
   }
+}
+
+/** Trecho que voltou igual ao original (frase de verdade, não um nome ou “* * *”). */
+function looksUntranslated(src: string, out: string): boolean {
+  const a = toPlainText(src).replace(/\s+/g, " ").trim();
+  return a === toPlainText(out).replace(/\s+/g, " ").trim() && a.split(" ").length >= 4 && /\p{L}{3}/u.test(a);
+}
+
+/**
+ * Revisão automática: libera para nova tradução os trechos que falharam e os
+ * que voltaram iguais ao original. Trechos editados à mão nunca são tocados.
+ * Devolve quantos trechos serão refeitos.
+ */
+export async function markForReview(bookId: string): Promise<number> {
+  const meta = await store.get(bookId);
+  if (!meta) return 0;
+  const source = findLanguage(meta.sourceLanguage ?? meta.detectedLanguage);
+  const sameLanguage = !source || source.code === findLanguage(meta.targetLanguage)?.code;
+  let count = 0;
+  for (const d of meta.docs) {
+    const doc = await store.readDoc(bookId, d.id);
+    const needs = (s: (typeof doc.segments)[number]) =>
+      !s.edited && ((s.failed && s.out === undefined) || (!sameLanguage && s.out !== undefined && looksUntranslated(s.src, s.out)));
+    if (!doc.segments.some(needs)) continue;
+    await store.updateDoc(bookId, d.id, (content) => {
+      for (const s of content.segments) {
+        if (!needs(s)) continue;
+        delete s.failed;
+        delete s.out;
+        count++;
+      }
+    });
+  }
+  if (count) await recountProgress(bookId);
+  return count;
 }
 
 /**

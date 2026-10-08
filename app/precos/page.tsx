@@ -6,6 +6,7 @@ import { brl } from "@/lib/money";
 import { PUBLIC_MODE } from "@/lib/mode";
 import { Check } from "@/components/ui/icons";
 import { PriceCalculator } from "@/components/commerce/price-calculator";
+import { Faq } from "@/components/commerce/faq";
 
 export const metadata: Metadata = { title: "Preços" };
 
@@ -15,19 +16,7 @@ const INCLUDED = [
   "Nomes e termos consistentes do começo ao fim",
   "Revisão e edição de cada parágrafo, online",
   "EPUB para Kindle, Kobo e Apple Books, e PDF com cara de livro",
-  "Sem assinatura: você paga só pelo livro que traduzir",
-];
-
-const FAQ: [string, string][] = [
-  [
-    "Como o preço é calculado?",
-    "Pelo tamanho do livro (número de palavras) e pelo tipo de tradução que você escolher. Você vê o valor exato antes de pagar.",
-  ],
-  ["Posso ver a tradução antes de pagar?", "Sim. Depois de enviar o livro, peça uma amostra grátis: um trecho do começo, com o original ao lado."],
-  ["Quanto tempo demora?", "De alguns minutos a algumas horas, conforme o tamanho do livro. Você acompanha o progresso capítulo por capítulo."],
-  ["Posso corrigir alguma coisa?", "Pode. Na revisão, cada parágrafo traduzido aparece ao lado do original e pode ser editado antes de baixar."],
-  ["Quais arquivos posso enviar?", "EPUB (o melhor ponto de partida) ou PDF com texto. Livros com DRM não podem ser lidos."],
-  ["O que vocês fazem com o meu livro?", "Nada além de traduzir. Seu livro não é publicado, compartilhado nem usado para outros fins."],
+  "Pagamento único: sem assinatura e sem cobrança automática",
 ];
 
 export default async function PricesPage() {
@@ -97,16 +86,8 @@ export default async function PricesPage() {
 
       <section className="mt-16 max-w-[40rem]">
         <h2 className="serif text-[1.8rem] leading-tight tracking-[-0.015em] text-ink">Perguntas</h2>
-        <div className="mt-4 divide-y divide-rule border-y border-rule">
-          {FAQ.map(([q, a]) => (
-            <details key={q} className="group py-4">
-              <summary className="flex cursor-pointer list-none items-baseline justify-between gap-4 text-[1rem] text-ink [&::-webkit-details-marker]:hidden">
-                {q}
-                <span className="shrink-0 text-muted transition-transform duration-300 group-open:rotate-45">+</span>
-              </summary>
-              <p className="mt-3 text-[0.9375rem] leading-relaxed text-ink-2">{a}</p>
-            </details>
-          ))}
+        <div className="mt-4">
+          <Faq />
         </div>
       </section>
     </main>

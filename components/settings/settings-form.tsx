@@ -181,8 +181,8 @@ export function SettingsForm({ variant = "customer" }: { variant?: "customer" | 
       {!PUBLIC_MODE && !admin ? (
         <Section title="Privacidade">
           <p className="text-[0.9375rem] leading-relaxed text-ink-2">
-            Seus livros são usados só para a tradução: não são publicados, compartilhados nem usados para outros fins. Você pode excluir um livro a
-            qualquer momento, na página dele.
+            Seu livro é usado para fazer a sua tradução e fica guardado para você revisar e baixar. Não é publicado nem vendido, e você pode excluí-lo
+            a qualquer momento, na página dele.
           </p>
         </Section>
       ) : PUBLIC_MODE ? (
