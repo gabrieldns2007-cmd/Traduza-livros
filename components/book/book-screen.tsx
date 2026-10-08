@@ -13,12 +13,15 @@ import { StartPanel } from "./start-panel";
 import { ChapterList } from "./chapter-list";
 import { GlossaryPanel } from "./glossary-panel";
 import { AboutBook } from "./about-book";
+import { Steps } from "@/components/ui/steps";
 
 export function BookScreen({ initial, initialGlossary }: { initial: BookView; initialGlossary: GlossaryEntry[] }) {
   const router = useRouter();
   const [book, setBook] = useState(initial);
   const [glossary, setGlossary] = useState(initialGlossary);
   const active = isActive(book.status);
+  // a prévia grátis roda com o livro ainda “pronto”: acompanha também
+  const polling = active || book.preview?.status === "running";
 
   const refresh = useCallback(async () => {
     try {
@@ -40,8 +43,8 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
 
   // acompanha o progresso enquanto a tradução está em andamento
   useEffect(() => {
-    if (!active) return;
-    const t = setInterval(refresh, 3000);
+    if (!polling) return;
+    const t = setInterval(refresh, active ? 3000 : 2000);
     const g = setInterval(refreshGlossary, 12000);
     const onVisible = () => document.visibilityState === "visible" && refresh();
     document.addEventListener("visibilitychange", onVisible);
@@ -50,7 +53,7 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
       clearInterval(g);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [active, refresh, refreshGlossary]);
+  }, [polling, active, refresh, refreshGlossary]);
 
   // ao terminar, atualiza o glossário uma última vez
   useEffect(() => {
@@ -90,7 +93,9 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
         )}
       </header>
 
-      <div className="mt-10 sm:mt-12">
+      <Steps current={book.status === "ready" ? 2 : 3} done={book.status === "done"} className="mt-8" />
+
+      <div className="mt-8 sm:mt-10">
         {book.status === "ready" && <StartPanel book={book} onStarted={setBook} />}
         {(active || book.status === "paused" || book.status === "error") && <ProgressPanel book={book} onAction={act} />}
         {book.status === "done" && <DonePanel book={book} onChange={setBook} onRetry={() => act("retry-failed")} />}

@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { ArrowRight, Chevron } from "@/components/ui/icons";
 import { ProviderPicker, type ProviderChoice } from "@/components/book/provider-picker";
+import { Steps } from "@/components/ui/steps";
 
 type Phase =
   | { kind: "idle" }
@@ -64,7 +65,7 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
   const [instructions, setInstructions] = useState(defaults.instructions);
   const [dialogueStyle, setDialogueStyle] = useState(defaults.dialogueStyle);
   const [deepContext, setDeepContext] = useState(defaults.deepContext);
-  const [starting, setStarting] = useState(false);
+  const [starting, setStarting] = useState<"" | "preview" | "start">("");
   const [startError, setStartError] = useState("");
   const [choice, setChoice] = useState<ProviderChoice | null>(null);
 
@@ -100,15 +101,16 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
     if (inputRef.current) inputRef.current.value = "";
   };
 
-  const start = async () => {
+  /** "preview": passo 2 (prévia grátis); "start": pula a prévia e traduz tudo. */
+  const start = async (action: "preview" | "start") => {
     if (phase.kind !== "ready") return;
-    setStarting(true);
+    setStarting(action);
     setStartError("");
     try {
       await api(`/api/books/${phase.book.id}/translate`, {
         method: "POST",
         json: {
-          action: "start",
+          action,
           targetLanguage: target,
           sourceLanguage: source,
           options: { instructions, dialogueStyle, deepContext },
@@ -119,7 +121,7 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
       router.push(`/livros/${phase.book.id}`);
     } catch (err) {
       setStartError((err as Error).message);
-      setStarting(false);
+      setStarting("");
     }
   };
 
@@ -128,6 +130,7 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
 
   return (
     <div className="w-full">
+      <Steps current={phase.kind === "ready" ? 2 : 1} className="mb-6" />
       <input
         ref={inputRef}
         type="file"
@@ -154,7 +157,7 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
           role="button"
           tabIndex={0}
           onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && inputRef.current?.click()}
-          className={`group relative cursor-pointer rounded-[1.25rem] border px-6 py-12 text-center transition-colors duration-300 sm:py-16 ${
+          className={`group relative cursor-pointer rounded-[1.25rem] border px-6 py-10 text-center transition-colors duration-300 sm:py-12 ${
             dragging ? "border-accent bg-accent-soft/50" : "border-rule-strong hover:border-ink-2 hover:bg-paper-2/60"
           }`}
         >
@@ -297,15 +300,24 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
             <ProviderPicker bookId={phase.book.id} onChange={setChoice} />
           </div>
 
-          <div className="mt-6 flex flex-col items-stretch gap-4 sm:flex-row sm:items-center">
-            <Button onClick={start} disabled={starting || !choice?.ready} className="w-full sm:w-auto">
-              {starting ? "Começando…" : "Começar tradução"}
-              {!starting && <ArrowRight />}
+          <div className="mt-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center">
+            <Button onClick={() => start("preview")} disabled={!!starting || !choice?.ready} className="w-full sm:w-auto">
+              {starting === "preview" ? "Pedindo a prévia…" : "Ver prévia grátis"}
+              {starting !== "preview" && <ArrowRight />}
             </Button>
-            <p className="text-center text-[0.8125rem] leading-snug text-muted sm:text-left">
-              A tradução continua no servidor, mesmo se você fechar esta página.
-            </p>
+            <button
+              type="button"
+              onClick={() => start("start")}
+              disabled={!!starting || !choice?.ready}
+              className="link py-2 text-center text-[0.875rem] text-ink-2 hover:text-ink disabled:opacity-50 sm:text-left"
+            >
+              {starting === "start" ? "Começando…" : "Pular a prévia e traduzir tudo"}
+            </button>
           </div>
+          <p className="mt-3 text-[0.8125rem] leading-relaxed text-muted">
+            A prévia traduz só um trecho do começo (um pedido) para você avaliar a qualidade. A tradução continua no servidor, mesmo se você fechar
+            esta página.
+          </p>
           {startError && (
             <p className="mt-4 text-[0.9375rem] text-accent" role="alert">
               {startError}

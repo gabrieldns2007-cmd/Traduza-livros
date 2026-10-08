@@ -76,29 +76,31 @@ export function SettingsForm() {
         </div>
       </Section>
 
-      <Section
-        title="Todos os serviços"
-        note="O serviço é escolhido em cada livro, antes de começar. Serviços pagos sempre pedem confirmação e nunca são usados automaticamente."
-      >
-        <ul className="divide-y divide-rule border-y border-rule">
-          {data.providers
-            .filter((p) => !p.paid || p.available)
-            .map((p) => (
-              <li key={p.id} className="flex items-baseline justify-between gap-4 py-3">
-                <span className="min-w-0">
-                  <span className="block text-[0.9375rem] text-ink">
-                    {p.label}
-                    {p.id === freeDefault && <span className="ml-2 text-[0.75rem] text-muted">padrão</span>}
+      {data.providers.some((p) => p.paid && p.available) && (
+        <Section
+          title="Serviços pagos"
+          note="O serviço é escolhido em cada livro, antes de começar. Serviços pagos sempre pedem confirmação e nunca são usados automaticamente."
+        >
+          <ul className="divide-y divide-rule border-y border-rule">
+            {data.providers
+              .filter((p) => !p.paid || p.available)
+              .map((p) => (
+                <li key={p.id} className="flex items-baseline justify-between gap-4 py-3">
+                  <span className="min-w-0">
+                    <span className="block text-[0.9375rem] text-ink">
+                      {p.label}
+                      {p.id === freeDefault && <span className="ml-2 text-[0.75rem] text-muted">padrão</span>}
+                    </span>
+                    <span className="mt-0.5 block truncate text-[0.8125rem] text-muted">{p.available ? p.model : p.hint}</span>
                   </span>
-                  <span className="mt-0.5 block truncate text-[0.8125rem] text-muted">{p.available ? p.model : p.hint}</span>
-                </span>
-                <span className={`shrink-0 text-[0.75rem] ${p.paid ? "text-accent" : "text-ok"}`}>
-                  {p.paid ? "Pago" : "Gratuito"} {p.available ? "" : "· não configurado"}
-                </span>
-              </li>
-            ))}
-        </ul>
-      </Section>
+                  <span className={`shrink-0 text-[0.75rem] ${p.paid ? "text-accent" : "text-ok"}`}>
+                    {p.paid ? "Pago" : "Gratuito"} {p.available ? "" : "· não configurado"}
+                  </span>
+                </li>
+              ))}
+          </ul>
+        </Section>
+      )}
 
       <Section title="Padrões para novos livros">
         <Select label="Traduzir para" value={form.targetLanguage} onChange={(e) => update({ targetLanguage: e.target.value })}>

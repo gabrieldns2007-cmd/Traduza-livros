@@ -122,6 +122,19 @@ export interface BookProgress {
   measuredWords: number;
 }
 
+/** Prévia grátis: um trecho traduzido antes de decidir traduzir o livro todo. */
+export interface BookPreview {
+  status: "running" | "done" | "error";
+  provider: { id: string; model: string };
+  chapterId: string;
+  docId: string;
+  /** intervalo de segmentos (no documento) incluídos na prévia */
+  start: number;
+  end: number;
+  error?: string;
+  at: string;
+}
+
 export interface BookMeta {
   id: string;
   createdAt: string;
@@ -151,6 +164,7 @@ export interface BookMeta {
   profile?: BookProfile;
   options: TranslationOptions;
   provider?: { id: string; model: string };
+  preview?: BookPreview;
   usage: { inputTokens: number; outputTokens: number };
   /** caminho da imagem de capa dentro do EPUB */
   cover?: string;

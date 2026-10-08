@@ -16,7 +16,7 @@ import { mergeCandidates } from "@/services/glossary/glossary";
 import { createProvider, type TranslationProvider } from "@/services/translation";
 import { ProviderError } from "@/services/translation/llm/types";
 import { KeyedMutex, mapLimit } from "@/utils/async";
-import { bookContext, pendingChars, processChapters } from "./chapter-processor";
+import { bookContext, pendingChars, processChapters, translateRange } from "./chapter-processor";
 
 const ACTIVE: BookMeta["status"][] = ["queued", "analyzing", "translating"];
 
@@ -30,6 +30,8 @@ class JobRunner {
   private analysisMutex = new KeyedMutex();
   /** atividade atual de cada livro (pedido em andamento, espera de limite) */
   private activities = new Map<string, BookActivity>();
+  /** prévias em andamento (podem ser canceladas ao excluir o livro) */
+  private previews = new Map<string, AbortController>();
   /** fábrica do provedor (substituível em testes) */
   providerFactory: (id: string, settings?: Awaited<ReturnType<typeof readSettings>>) => TranslationProvider = createProvider;
 
@@ -38,6 +40,12 @@ class JobRunner {
     if (this.initialized) return;
     this.initialized = true;
     const books = await store.list();
+    // prévia interrompida por reinício do servidor: pode ser pedida de novo
+    for (const b of books.filter((x) => x.preview?.status === "running")) {
+      await store.update(b.id, (m) => {
+        if (m.preview) Object.assign(m.preview, { status: "error", error: "O servidor reiniciou. Peça a prévia de novo." });
+      });
+    }
     const pending = books.filter((b) => ACTIVE.includes(b.status)).sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
     for (const b of pending) {
       // provedor pago nunca recomeça sozinho: fica pausado até o usuário confirmar
@@ -98,8 +106,96 @@ class JobRunner {
     });
   }
 
+  isPreviewing(bookId: string) {
+    return this.previews.has(bookId);
+  }
+
+  /**
+   * Prévia grátis: traduz um trecho curto do primeiro capítulo de verdade
+   * (pula capa, sumário e direitos autorais). Um único pedido; o trecho fica
+   * salvo e não é traduzido de novo quando o livro todo for traduzido.
+   */
+  async preview(bookId: string, providerId: string) {
+    await this.init();
+    if (this.previews.has(bookId)) return;
+    const settings = await readSettings();
+    const provider = this.providerFactory(providerId, settings);
+    const meta = (await store.get(bookId))!;
+    const chapter = meta.chapters.find((c) => c.wordCount >= 150) ?? meta.chapters.find((c) => c.wordCount > 0);
+    if (!chapter) throw new ProviderError("Não há texto para a prévia.", { fatal: true, code: "other" });
+    const doc = await store.readDoc(bookId, chapter.docId);
+    const budget = Math.min(2500, provider.limits.batchChars);
+    let end = chapter.start;
+    let chars = 0;
+    while (end < chapter.end && (end === chapter.start || chars + doc.segments[end].src.length <= budget)) {
+      chars += doc.segments[end].src.length;
+      end++;
+    }
+    await store.update(bookId, (m) => {
+      m.preview = {
+        status: "running",
+        provider: { id: provider.id, model: provider.model },
+        chapterId: chapter.id,
+        docId: chapter.docId,
+        start: chapter.start,
+        end,
+        at: new Date().toISOString(),
+      };
+    });
+
+    const controller = new AbortController();
+    this.previews.set(bookId, controller);
+    void (async () => {
+      try {
+        await translateRange(meta, chapter, chapter.start, end, provider, {
+          signal: controller.signal,
+          analysisLock: (fn) => fn(),
+          onChapterSaved: async () => {},
+          onUsage: async (usage) => {
+            await store.update(
+              bookId,
+              (m) => {
+                m.usage.inputTokens += usage.inputTokens;
+                m.usage.outputTokens += usage.outputTokens;
+              },
+              { persist: false },
+            );
+          },
+          onProgress: async (chapterId, delta) => {
+            await store.update(bookId, (m) => {
+              const c = m.chapters.find((x) => x.id === chapterId)!;
+              c.translatedWords += delta.words;
+              c.translatedSegments += delta.segments;
+              c.failedSegments += delta.failed;
+              m.progress.translatedWords += delta.words;
+              m.progress.translatedSegments += delta.segments;
+            });
+          },
+          onActivity: (a) => {
+            if (a) this.activities.set(bookId, a);
+            else this.activities.delete(bookId);
+          },
+        });
+        await store.update(bookId, (m) => {
+          if (m.preview) m.preview.status = "done";
+        });
+      } catch (err) {
+        if (!(await store.get(bookId))) return; // livro excluído
+        const message = err instanceof ProviderError ? err.message : "Não foi possível fazer a prévia agora. Tente de novo.";
+        console.warn(`[runner] prévia do livro ${bookId} falhou`, err);
+        await store.update(bookId, (m) => {
+          if (m.preview) Object.assign(m.preview, { status: "error", error: message });
+        });
+      } finally {
+        this.previews.delete(bookId);
+        this.activities.delete(bookId);
+      }
+    })();
+  }
+
   /** Para tudo antes de apagar um livro. */
   async stop(bookId: string) {
+    this.previews.get(bookId)?.abort(new Error("deleted"));
     this.queue = this.queue.filter((id) => id !== bookId);
     if (this.current?.bookId === bookId) {
       this.current.controller.abort(new Error("deleted"));

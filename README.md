@@ -156,6 +156,19 @@ O provedor padrão é o **Gemini Free** (Google AI Studio), sem cartão e sem bi
 
 Para caber no limite diário gratuito, o Verso manda trechos grandes por pedido — vários capítulos pequenos vão juntos — e extrai os nomes do glossário na mesma resposta. Quando o limite gratuito acaba, a tradução **pausa** (“Limite gratuito atingido…”) e continua do mesmo ponto quando a cota volta. No nível gratuito, o Google pode usar o texto enviado para melhorar os produtos dele.
 
+### Outros serviços gratuitos (sem cartão)
+
+Cada serviço tem a própria cota diária. Quando a de um acaba, a tradução pausa e você pode continuar com outro — sempre por escolha sua; nunca há troca automática, e nunca para um serviço pago.
+
+- **GitHub Models** — usa a sua conta do GitHub. Crie um token em [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new) com a permissão **Models: Read-only** e cole em Ajustes (ou `GITHUB_MODELS_TOKEN`). Modelos GPT-4.1 / GPT-4.1 mini; pedidos menores (limite de ~8 mil tokens por pedido no nível gratuito). O token automático do Codespaces não é usado.
+- **Groq** — crie uma chave em [console.groq.com/keys](https://console.groq.com/keys) e cole em Ajustes (ou `GROQ_API_KEY`). Modelos Llama 3.3 70B / GPT-OSS 120B; o limite é de texto por dia.
+
+Os **créditos grátis de hoje** (Ajustes e escolha do serviço no livro) mostram quantos pedidos já foram usados em cada serviço e, quando a cota acaba, a hora em que ela volta. Os limites oficiais mudam; quando o serviço não informa o restante, o número é uma estimativa.
+
+### Prévia grátis
+
+Antes de traduzir o livro todo, **Ver prévia grátis** traduz só um trecho do começo do primeiro capítulo de verdade (pulando capa, sumário e direitos autorais), num único pedido, e mostra original e tradução lado a lado. O trecho fica salvo e não é traduzido de novo depois.
+
 **Regras de custo:** o Verso nunca liga billing, nunca troca de provedor sozinho e nunca usa um provedor pago sem você escolher e confirmar (“Esta tradução pode gerar custos”, com estimativa). Traduções com provedor pago não recomeçam sozinhas depois de reiniciar o servidor.
 
 ## Rodando no GitHub Codespaces

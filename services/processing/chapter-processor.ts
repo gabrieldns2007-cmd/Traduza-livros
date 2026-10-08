@@ -147,6 +147,26 @@ export async function processChapters(meta: BookMeta, chapters: ChapterMeta[], p
   }
 }
 
+/** Traduz só um trecho de um capítulo (prévia grátis). As traduções ficam salvas e contam no progresso. */
+export async function translateRange(
+  meta: BookMeta,
+  chapter: ChapterMeta,
+  start: number,
+  end: number,
+  provider: TranslationProvider,
+  hooks: ProcessorHooks,
+) {
+  const doc = await store.readDoc(meta.id, chapter.docId);
+  const items: Item[] = doc.segments
+    .slice(start, end)
+    .filter((seg) => seg.out === undefined && !seg.failed)
+    .map((seg) => ({ chapter, doc, seg }));
+  for (const batch of makeBatches(items, provider.limits.batchChars)) {
+    if (hooks.signal.aborted) throw hooks.signal.reason ?? new Error("aborted");
+    await translateBatch(meta.id, batch, provider, hooks);
+  }
+}
+
 async function translateBatch(bookId: string, batch: Item[], provider: TranslationProvider, hooks: ProcessorHooks) {
   const meta = (await store.get(bookId))!;
   const book = bookContext(meta);

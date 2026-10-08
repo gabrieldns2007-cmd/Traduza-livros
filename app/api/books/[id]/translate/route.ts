@@ -10,7 +10,7 @@ import { jobRunner, recountProgress } from "@/services/processing/job-runner";
 type Ctx = { params: Promise<{ id: string }> };
 
 const Body = z.object({
-  action: z.enum(["start", "pause", "resume", "retry-failed"]),
+  action: z.enum(["preview", "start", "pause", "resume", "retry-failed"]),
   /** provedor escolhido pelo usuário (padrão: o gratuito) */
   providerId: z.enum(["gemini", "github", "groq", "anthropic", "openai", "demo"]).optional(),
   /** confirmação explícita de que a tradução pode gerar custos */
@@ -53,6 +53,44 @@ async function chooseProvider(meta: BookMeta, providerId: string | undefined, co
   return { cfg };
 }
 
+type SetupBody = Pick<z.infer<typeof Body>, "targetLanguage" | "sourceLanguage" | "options">;
+
+/**
+ * Aplica idiomas e opções antes da prévia ou do início. Se os idiomas mudarem
+ * depois de uma prévia, o trecho da prévia é descartado (ele estava em outro idioma).
+ */
+async function applySetup(meta: BookMeta, body: SetupBody) {
+  const { targetLanguage, sourceLanguage, options } = body;
+  const notStarted = meta.status === "ready";
+  const nextTarget = notStarted && targetLanguage ? (findLanguage(targetLanguage)?.code ?? meta.targetLanguage) : meta.targetLanguage;
+  const nextSource =
+    notStarted && sourceLanguage !== undefined
+      ? sourceLanguage && sourceLanguage !== "auto"
+        ? (findLanguage(sourceLanguage)?.code ?? null)
+        : null
+      : meta.sourceLanguage;
+  const languagesChanged = nextTarget !== meta.targetLanguage || nextSource !== meta.sourceLanguage;
+  if (languagesChanged && meta.preview) {
+    const p = meta.preview;
+    await store.updateDoc(meta.id, p.docId, (content) => {
+      for (const s of content.segments.slice(p.start, p.end)) if (!s.edited) delete s.out;
+    });
+  }
+  await store.update(meta.id, (m) => {
+    m.targetLanguage = nextTarget;
+    m.sourceLanguage = nextSource;
+    if (languagesChanged) delete m.preview;
+    if (options) {
+      m.options = {
+        dialogueStyle: options.dialogueStyle ?? m.options.dialogueStyle,
+        deepContext: options.deepContext ?? m.options.deepContext,
+        instructions: options.instructions?.trim() || undefined,
+      };
+    }
+  });
+  if (languagesChanged && meta.preview) await recountProgress(meta.id);
+}
+
 export async function POST(request: Request, { params }: Ctx) {
   const id = (await params).id;
   const meta = await loadBook(id);
@@ -61,27 +99,38 @@ export async function POST(request: Request, { params }: Ctx) {
   if (!parsed.success) return fail("Pedido inválido.");
   const { action } = parsed.data;
 
+  if (action !== "pause" && jobRunner.isPreviewing(id)) return fail("Aguarde a prévia terminar.", 409);
+
   if (action === "pause") {
     await jobRunner.pause(id);
-  } else if (action === "start") {
-    if (meta.status !== "ready" && meta.status !== "error" && meta.status !== "paused") return fail("Este livro já está sendo traduzido.", 409);
-    const { targetLanguage, sourceLanguage, options } = parsed.data;
-    const untouched = meta.progress.translatedSegments === 0;
+  } else if (action === "preview") {
+    if (meta.status !== "ready") return fail("A prévia é feita antes de começar a tradução.", 409);
     const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);
     if (chosen.error) return chosen.error;
+    // refazer a prévia: descarta o trecho anterior (as edições à mão ficam)
+    const old = meta.preview;
+    if (old) {
+      await store.updateDoc(id, old.docId, (content) => {
+        for (const s of content.segments.slice(old.start, old.end)) if (!s.edited) delete s.out;
+      });
+      await store.update(id, (m) => {
+        delete m.preview;
+      });
+      await recountProgress(id);
+    }
+    await applySetup((await store.get(id))!, parsed.data);
+    try {
+      await jobRunner.preview(id, chosen.cfg.id);
+    } catch (err) {
+      return fail(err instanceof Error ? err.message : "Não foi possível fazer a prévia.", 400);
+    }
+  } else if (action === "start") {
+    if (meta.status !== "ready" && meta.status !== "error" && meta.status !== "paused") return fail("Este livro já está sendo traduzido.", 409);
+    const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);
+    if (chosen.error) return chosen.error;
+    await applySetup(meta, parsed.data);
     await store.update(id, (m) => {
       m.provider = { id: chosen.cfg.id, model: chosen.cfg.model };
-      if (untouched && targetLanguage) m.targetLanguage = findLanguage(targetLanguage)?.code ?? m.targetLanguage;
-      if (untouched && sourceLanguage !== undefined) {
-        m.sourceLanguage = sourceLanguage && sourceLanguage !== "auto" ? (findLanguage(sourceLanguage)?.code ?? null) : null;
-      }
-      if (options) {
-        m.options = {
-          dialogueStyle: options.dialogueStyle ?? m.options.dialogueStyle,
-          deepContext: options.deepContext ?? m.options.deepContext,
-          instructions: options.instructions?.trim() || undefined,
-        };
-      }
     });
     await jobRunner.start(id);
   } else if (action === "resume") {
