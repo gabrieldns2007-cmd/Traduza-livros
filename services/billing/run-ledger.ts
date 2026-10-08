@@ -14,7 +14,7 @@
 import type { BookMeta, TranslationRun } from "@/types/book";
 import { store } from "@/lib/storage";
 import { billingMode } from "@/lib/billing/mode";
-import { brlPerUsd, CREDIT, ECONOMICS, minCreditPriceBrl, netFactor, qualityOfModel } from "@/lib/billing/catalog";
+import { brlPerUsd, CREDIT, ECONOMICS, minCreditPriceBrl, netFactor, planById, qualityOfModel } from "@/lib/billing/catalog";
 import { usageCostUsd } from "@/lib/billing/prices";
 import { milliFor } from "@/lib/billing/quote";
 import { ProviderError } from "@/services/translation/llm/types";
@@ -80,6 +80,9 @@ export class RunLedger {
     };
     const ledger = new RunLedger(meta.id, run);
     if (ledger.enforce) {
+      // a qualidade (modelo) precisa fazer parte do plano — também conferido na API, aqui por garantia
+      const plan = planById((await wallet.read()).plan);
+      if (!plan.qualities.includes(quality.id)) throw new BillingStop(`A qualidade ${quality.label} não faz parte do plano ${plan.name}.`, "wallet");
       const remaining = Math.max(0, meta.totals.words - meta.progress.translatedWords);
       try {
         run.credits.reservedMilli = await wallet.reserve(run.id, meta.id, milliFor(remaining, quality.creditsPer1k), {

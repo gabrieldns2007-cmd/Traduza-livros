@@ -12,7 +12,9 @@
     "test:watch": "vitest",
     "format": "prettier --write .",
     "status": "node scripts/book-status.mjs",
-    "app": "next build && next start -H 0.0.0.0"
+    "app": "next build && next start -H 0.0.0.0",
+    "custos": "node scripts/costs.mjs",
+    "creditos": "node scripts/credits.mjs"
   },
   "engines": {
     "node": ">=20.9"

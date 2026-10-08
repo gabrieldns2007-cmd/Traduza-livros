@@ -8,7 +8,7 @@ import { findLanguage } from "@/lib/languages";
 import { jobRunner, recountProgress } from "@/services/processing/job-runner";
 import { billingMode } from "@/lib/billing/mode";
 import { milliFor, quoteWords } from "@/lib/billing/quote";
-import { CREDIT } from "@/lib/billing/catalog";
+import { CREDIT, PLANS, planById, qualityOfModel } from "@/lib/billing/catalog";
 import { availableMilli, wallet, WalletError } from "@/services/billing/wallet";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -83,6 +83,16 @@ async function checkCredits(meta: BookMeta, cfg: { id: string; model: string; bi
   );
 }
 
+/** Cada plano libera certas qualidades (modelos mais caros só nos planos pagos). */
+async function checkPlanQuality(cfg: { model: string; billing: "byok" | "hosted" | "none" }) {
+  if (billingMode() !== "enforce" || cfg.billing !== "hosted") return null;
+  const plan = planById((await wallet.read()).plan);
+  const quality = qualityOfModel(cfg.model);
+  if (plan.qualities.includes(quality.id)) return null;
+  const needed = PLANS.find((p) => p.qualities.includes(quality.id));
+  return fail(`A qualidade ${quality.label} está disponível no plano ${needed?.name ?? "Pro"}.`, 403);
+}
+
 type SetupBody = Pick<z.infer<typeof Body>, "targetLanguage" | "sourceLanguage" | "options">;
 
 /**
@@ -137,6 +147,8 @@ export async function POST(request: Request, { params }: Ctx) {
     if (meta.status !== "ready") return fail("A prévia é feita antes de começar a tradução.", 409);
     const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);
     if (chosen.error) return chosen.error;
+    const notInPlan = await checkPlanQuality(chosen.cfg);
+    if (notInPlan) return notInPlan;
     // prévia é grátis para a pessoa, mas tem custo quando usa a chave do Verso: limite diário por plano
     if (billingMode() === "enforce" && chosen.cfg.billing === "hosted") {
       try {
@@ -167,6 +179,8 @@ export async function POST(request: Request, { params }: Ctx) {
     if (meta.status !== "ready" && meta.status !== "error" && meta.status !== "paused") return fail("Este livro já está sendo traduzido.", 409);
     const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);
     if (chosen.error) return chosen.error;
+    const notInPlan = await checkPlanQuality(chosen.cfg);
+    if (notInPlan) return notInPlan;
     const noCredits = await checkCredits(meta, chosen.cfg, parsed.data.partial);
     if (noCredits) return noCredits;
     await applySetup(meta, parsed.data);
@@ -178,6 +192,8 @@ export async function POST(request: Request, { params }: Ctx) {
     if (meta.status === "done") return fail("Este livro já foi traduzido.", 409);
     const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);
     if (chosen.error) return chosen.error;
+    const notInPlan = await checkPlanQuality(chosen.cfg);
+    if (notInPlan) return notInPlan;
     const noCredits = await checkCredits(meta, chosen.cfg, parsed.data.partial);
     if (noCredits) return noCredits;
     await store.update(id, (m) => {

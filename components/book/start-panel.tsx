@@ -49,7 +49,14 @@ export function StartPanel({ book, onStarted }: { book: BookView; onStarted: (b:
     try {
       const { book: b } = await api<{ book: BookView }>(`/api/books/${book.id}/translate`, {
         method: "POST",
-        json: { action, sourceLanguage: source, targetLanguage: target, providerId: choice?.providerId, confirmCost: choice?.confirmCost },
+        json: {
+          action,
+          sourceLanguage: source,
+          targetLanguage: target,
+          providerId: choice?.providerId,
+          confirmCost: choice?.confirmCost,
+          partial: choice?.partial,
+        },
       });
       if (b) onStarted(b);
     } catch (err) {
@@ -160,7 +167,7 @@ export function StartPanel({ book, onStarted }: { book: BookView; onStarted: (b:
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
         {done ? (
           <>
-            <Button onClick={() => send("start")} disabled={!!busy || running || !choice?.ready} className="w-full sm:w-auto">
+            <Button onClick={() => send("start")} disabled={!!busy || running || !choice?.ready || !choice.creditsOk} className="w-full sm:w-auto">
               {busy === "start" ? "Começando…" : "Traduzir o livro todo"} {busy !== "start" && <ArrowRight />}
             </Button>
             <button
@@ -185,7 +192,7 @@ export function StartPanel({ book, onStarted }: { book: BookView; onStarted: (b:
             </Button>
             <button
               onClick={() => send("start")}
-              disabled={!!busy || running || !choice?.ready}
+              disabled={!!busy || running || !choice?.ready || !choice.creditsOk}
               className="link py-2 text-center text-[0.875rem] text-ink-2 hover:text-ink disabled:opacity-50 sm:text-left"
             >
               {busy === "start" ? "Começando…" : "Pular a prévia e traduzir tudo"}

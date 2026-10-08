@@ -37,6 +37,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   return json({
     defaultId: usable(meta.provider?.id)?.id ?? firstWithQuota?.id ?? defaultProviderId(settings),
     remainingWords: remaining,
+    title: meta.translatedTitle || meta.title,
     wallet: await walletSummary(),
     providers,
   });

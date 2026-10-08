@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Check } from "@/components/ui/icons";
 import { FreeServiceCard, type FreeService } from "./free-service-card";
 import { PUBLIC_MODE } from "@/lib/mode";
+import { BillingCard } from "@/components/billing/billing-card";
 
 interface Payload {
   settings: {
@@ -66,8 +67,14 @@ export function SettingsForm() {
 
   return (
     <div className="rise mt-10 sm:mt-14">
+      {!PUBLIC_MODE && (
+        <Section title="Plano e créditos">
+          <BillingCard />
+        </Section>
+      )}
+
       <Section
-        title="Créditos grátis de hoje"
+        title="Sua chave gratuita (cota de hoje)"
         note={`Serviços de IA gratuitos, sem cartão. Cada um tem a própria cota diária: quando a de um acaba, você pode continuar com outro. ${PUBLIC_MODE ? "As chaves ficam só neste navegador." : "As chaves ficam só no servidor."}`}
       >
         <div className="space-y-3">

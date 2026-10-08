@@ -9,6 +9,7 @@ import { useSession } from "./public/public-shell";
 const LINKS = [
   { href: "/", label: "Traduzir", short: "Traduzir", match: (p: string) => p === "/" },
   { href: "/livros", label: "Meus livros", short: "Livros", match: (p: string) => p.startsWith("/livros") },
+  { href: "/planos", label: "Planos", short: "Planos", match: (p: string) => p.startsWith("/planos") },
   { href: "/configuracoes", label: "Configurações", short: "Ajustes", match: (p: string) => p.startsWith("/configuracoes") },
 ];
 
@@ -28,7 +29,7 @@ export function SiteHeader() {
               key={l.href}
               href={l.href}
               aria-current={active ? "page" : undefined}
-              className={`rounded-full px-3 py-2 transition-colors active:bg-paper-2 ${active ? "text-ink" : "text-muted hover:text-ink"} ${l.href === "/" ? "hidden sm:inline-block" : ""}`}
+              className={`rounded-full px-3 py-2 transition-colors active:bg-paper-2 ${active ? "text-ink" : "text-muted hover:text-ink"} ${l.href === "/" || l.href === "/planos" ? "hidden sm:inline-block" : ""}`}
             >
               <span className="sm:hidden">{l.short}</span>
               <span className="hidden sm:inline">{l.label}</span>

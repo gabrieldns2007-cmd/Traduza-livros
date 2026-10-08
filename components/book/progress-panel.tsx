@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { BookView } from "@/lib/api";
 import { chapterLabel, formatDuration, formatNumber } from "@/lib/format";
 import { ProgressBar } from "@/components/ui/progress-bar";
@@ -77,6 +78,9 @@ function headline(book: BookView, now: number | null): { title: string; sub?: st
       return { title, detail, sub: activityText(book, now) };
     }
     case "paused":
+      if (book.stopCode === "wallet")
+        return { title: "Seus créditos acabaram.", sub: "O que já foi traduzido está salvo. Adicione créditos para continuar do mesmo ponto." };
+      if (book.stopCode === "margin") return { title: "Tradução pausada para revisão.", sub: book.error };
       if (book.stopCode === "quota")
         return {
           title: "Limite gratuito atingido.",
@@ -116,7 +120,7 @@ export function ProgressPanel({
   onAction,
 }: {
   book: BookView;
-  onAction: (a: "pause" | "resume", extra?: { providerId?: string; confirmCost?: boolean }) => Promise<void>;
+  onAction: (a: "pause" | "resume", extra?: { providerId?: string; confirmCost?: boolean; partial?: boolean }) => Promise<void>;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -130,7 +134,10 @@ export function ProgressPanel({
     setBusy(true);
     setError("");
     try {
-      await onAction(a, a === "resume" && choice ? { providerId: choice.providerId, confirmCost: choice.confirmCost } : undefined);
+      await onAction(
+        a,
+        a === "resume" && choice ? { providerId: choice.providerId, confirmCost: choice.confirmCost, partial: choice.partial } : undefined,
+      );
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -148,6 +155,11 @@ export function ProgressPanel({
             <p className={`mt-1.5 text-[0.9375rem] leading-snug ${book.status === "error" || book.stopCode ? "text-accent" : "text-ink-2"}`}>
               {h.sub}
             </p>
+          )}
+          {book.status === "paused" && book.stopCode === "wallet" && (
+            <Link href="/planos" className="link mt-2 inline-block text-[0.9375rem] text-ink">
+              Ver planos e créditos
+            </Link>
           )}
         </div>
         <p className="serif num shrink-0 text-[2.6rem] leading-none font-[350] tracking-[-0.03em] text-ink sm:text-[3.4rem]">
@@ -211,7 +223,7 @@ export function ProgressPanel({
             Pausar
           </Button>
         ) : (
-          <Button onClick={() => run("resume")} disabled={busy || !choice?.ready}>
+          <Button onClick={() => run("resume")} disabled={busy || !choice?.ready || !choice.creditsOk}>
             {busy ? "Continuando…" : "Continuar tradução"}
           </Button>
         )}

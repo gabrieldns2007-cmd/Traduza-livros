@@ -9,6 +9,7 @@ type Handler = (req: Request, ctx: { params: Promise<any> }) => Promise<Response
 type RouteModule = Partial<Record<"GET" | "POST" | "PUT" | "PATCH" | "DELETE", Handler>>;
 
 interface Route {
+  path: string;
   pattern: RegExp;
   names: string[];
   load: () => Promise<RouteModule>;
@@ -32,11 +33,12 @@ function route(path: string, load: () => Promise<RouteModule>): Route {
       return seg.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     })
     .join("/");
-  return { pattern: new RegExp(`^${re}/?$`), names, load };
+  return { path, pattern: new RegExp(`^${re}/?$`), names, load };
 }
 
 const ROUTES: Route[] = [
   route("/api/settings", () => import("@/app/api/settings/route")),
+  route("/api/billing", () => import("@/app/api/billing/route")),
   route("/api/books", () => import("@/app/api/books/route")),
   route("/api/books/[id]", () => import("@/app/api/books/[id]/route")),
   route("/api/books/[id]/translate", () => import("@/app/api/books/[id]/translate/route")),
@@ -48,6 +50,11 @@ const ROUTES: Route[] = [
   route("/api/books/[id]/chapters/[chapterId]", () => import("@/app/api/books/[id]/chapters/[chapterId]/route")),
   route("/api/books/[id]/assets/[...path]", () => import("@/app/api/books/[id]/assets/[...path]/route")),
 ];
+
+/** Rotas respondidas no navegador (um teste confere que nenhuma rota de app/api ficou de fora). */
+export function localRoutePaths(): string[] {
+  return ROUTES.map((r) => r.path);
+}
 
 export async function handle(req: Request): Promise<Response> {
   const { pathname } = new URL(req.url);

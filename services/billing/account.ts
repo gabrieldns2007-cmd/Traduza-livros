@@ -5,7 +5,7 @@ import { availableMilli, wallet } from "./wallet";
 
 export interface WalletSummary {
   mode: BillingMode;
-  plan: { id: string; name: string; monthlyCredits: number };
+  plan: { id: string; name: string; monthlyCredits: number; qualities: string[] };
   available: number;
   reserved: number;
   /** próximos vencimentos (créditos, data) */
@@ -21,7 +21,7 @@ export async function walletSummary(): Promise<WalletSummary | null> {
   const reserved = Object.values(w.reservations).reduce((n, r) => n + r.milli - r.capturedMilli, 0);
   return {
     mode,
-    plan: { id: plan.id, name: plan.name, monthlyCredits: plan.monthlyCredits },
+    plan: { id: plan.id, name: plan.name, monthlyCredits: plan.monthlyCredits, qualities: plan.qualities },
     available: Math.floor(availableMilli(w) / CREDIT.milli),
     reserved: Math.ceil(reserved / CREDIT.milli),
     expiring: w.lots

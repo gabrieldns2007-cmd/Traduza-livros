@@ -13,6 +13,8 @@ import { StartPanel } from "./start-panel";
 import { ChapterList } from "./chapter-list";
 import { GlossaryPanel } from "./glossary-panel";
 import { AboutBook } from "./about-book";
+import { RunCosts } from "./run-costs";
+import { PUBLIC_MODE } from "@/lib/mode";
 import { Steps } from "@/components/ui/steps";
 
 export function BookScreen({ initial, initialGlossary }: { initial: BookView; initialGlossary: GlossaryEntry[] }) {
@@ -60,7 +62,7 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
     if (book.status === "done") void refreshGlossary();
   }, [book.status, refreshGlossary]);
 
-  const act = async (action: "pause" | "resume" | "retry-failed", extra?: { providerId?: string; confirmCost?: boolean }) => {
+  const act = async (action: "pause" | "resume" | "retry-failed", extra?: { providerId?: string; confirmCost?: boolean; partial?: boolean }) => {
     const { book: b } = await api<{ book: BookView }>(`/api/books/${book.id}/translate`, { method: "POST", json: { action, ...extra } });
     if (b) setBook(b);
   };
@@ -106,6 +108,8 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
           <ChapterList book={book} />
           <GlossaryPanel bookId={book.id} entries={glossary} onChange={setGlossary} live={active} />
           {book.profile && (book.profile.genre || book.profile.tone) && <AboutBook profile={book.profile} />}
+          {/* só no Verso de servidor próprio: quem vê é o dono, que paga os serviços */}
+          {!PUBLIC_MODE && book.runs && <RunCosts runs={book.runs} words={book.totals.words} />}
         </>
       )}
 

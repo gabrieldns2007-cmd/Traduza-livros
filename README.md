@@ -193,6 +193,16 @@ Como funciona por dentro:
 
 Para testar sem Google (só em desenvolvimento), `NEXT_PUBLIC_VERSO_TEST_LOGIN=1` mostra “Entrar como visitante (teste)” e o serviço de demonstração.
 
+## Produto e monetização
+
+Créditos (1 crédito = 1.000 palavras na qualidade Padrão), planos Grátis/Plus/Pro, créditos avulsos, custo real registrado por tradução e proteção de margem. Nada é cobrado enquanto `BILLING_MODE` não for `enforce`, e não há meio de pagamento ligado. Estratégia, números e próximos passos: [docs/monetizacao.md](docs/monetizacao.md). Página pública: `/planos`.
+
+```bash
+npm run custos                       # custo real e margem de cada tradução
+npm run creditos                     # saldo da carteira (servidor próprio)
+npm run creditos -- adicionar 100    # crédito manual (testes, enquanto não há pagamentos)
+```
+
 ## Rodando no GitHub Codespaces
 
 `npm run dev` compila cada página na primeira vez que ela é aberta, o que pode demorar. Para uso diário, rode `npm run app` (prepara uma versão rápida e inicia). Depois abra a aba **Ports** → porta **3000** → ícone de globo.

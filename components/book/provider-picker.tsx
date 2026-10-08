@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/client";
 import { quotaText, type QuotaInfo } from "@/lib/quota-format";
+import { QuoteCard, quoteAllows, type QuoteInfo, type WalletInfo } from "./quote-card";
 
 export interface ProviderOption {
   id: string;
@@ -14,14 +15,19 @@ export interface ProviderOption {
   hint?: string;
   estimate: { low: number; high: number; known: boolean } | null;
   quota: QuotaInfo | null;
+  quote: QuoteInfo | null;
 }
 
 export interface ProviderChoice {
   providerId: string;
   /** usuário confirmou que entende que pode haver custo */
   confirmCost: boolean;
-  /** pronto para começar (gratuito, ou pago com confirmação) */
+  /** serviço utilizável (gratuito, ou pago com confirmação) — basta para a prévia grátis */
   ready: boolean;
+  /** há créditos para traduzir (ou a pessoa escolheu traduzir só o que o saldo cobre) */
+  creditsOk: boolean;
+  /** créditos insuficientes: traduzir só o que o saldo cobre */
+  partial: boolean;
 }
 
 function usd(v: number) {
@@ -35,16 +41,21 @@ function usd(v: number) {
  */
 export function ProviderPicker({ bookId, onChange }: { bookId: string; onChange: (c: ProviderChoice) => void }) {
   const [options, setOptions] = useState<ProviderOption[] | null>(null);
+  const [walletInfo, setWalletInfo] = useState<WalletInfo | null>(null);
+  const [title, setTitle] = useState("");
+  const [partial, setPartial] = useState(false);
   const [selected, setSelected] = useState<string>("");
   const [confirmed, setConfirmed] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
     let alive = true;
-    api<{ defaultId: string; providers: ProviderOption[] }>(`/api/books/${bookId}/providers`)
+    api<{ defaultId: string; title: string; providers: ProviderOption[]; wallet: WalletInfo | null }>(`/api/books/${bookId}/providers`)
       .then((d) => {
         if (!alive) return;
         setOptions(d.providers);
+        setWalletInfo(d.wallet);
+        setTitle(d.title);
         // padrão sempre gratuito e com cota; o servidor já considera o serviço anterior do livro
         setSelected(d.defaultId);
       })
@@ -57,8 +68,14 @@ export function ProviderPicker({ bookId, onChange }: { bookId: string; onChange:
   const current = options?.find((p) => p.id === selected);
   useEffect(() => {
     if (!current) return;
-    onChange({ providerId: current.id, confirmCost: confirmed, ready: current.available && (!current.paid || confirmed) });
-  }, [current, confirmed, onChange]);
+    onChange({
+      providerId: current.id,
+      confirmCost: confirmed,
+      partial,
+      ready: current.available && (!current.paid || confirmed),
+      creditsOk: quoteAllows(current.quote, walletInfo, partial),
+    });
+  }, [current, confirmed, partial, walletInfo, onChange]);
 
   if (error) return <p className="text-[0.875rem] text-accent">{error}</p>;
   if (!options) return <div className="h-24 animate-pulse rounded-xl bg-paper-2" aria-label="Carregando provedores" />;
@@ -80,6 +97,7 @@ export function ProviderPicker({ bookId, onChange }: { bookId: string; onChange:
               onClick={() => {
                 setSelected(p.id);
                 setConfirmed(false);
+                setPartial(false);
               }}
               className={`flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition-colors active:bg-paper-2 disabled:cursor-not-allowed ${isSel ? "border-ink" : "border-rule hover:border-rule-strong"} ${!p.available ? "opacity-60" : ""}`}
             >
@@ -109,6 +127,17 @@ export function ProviderPicker({ bookId, onChange }: { bookId: string; onChange:
           );
         })}
       </div>
+
+      {current?.available && (
+        <QuoteCard
+          title={title}
+          quote={current.quote}
+          wallet={walletInfo}
+          serviceLabel={current.label.replace(/ Free$/, "")}
+          partial={partial}
+          onPartial={setPartial}
+        />
+      )}
 
       {current && !current.available && !current.paid && (
         <p className="mt-3 text-[0.8125rem] text-ink-2">

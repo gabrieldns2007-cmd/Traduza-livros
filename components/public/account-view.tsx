@@ -8,6 +8,7 @@ import { formatBytes } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { LinkPending } from "@/components/ui/pending";
 import { useSession } from "./public-shell";
+import { BillingCard } from "@/components/billing/billing-card";
 
 interface FreeService {
   id: string;
@@ -69,7 +70,14 @@ export function AccountView() {
       </header>
 
       <section className="mt-12 border-t border-rule pt-6">
-        <h2 className="label">Créditos grátis de hoje</h2>
+        <h2 className="label">Plano e créditos</h2>
+        <div className="mt-4">
+          <BillingCard />
+        </div>
+      </section>
+
+      <section className="mt-12 border-t border-rule pt-6">
+        <h2 className="label">Cota grátis dos serviços de IA</h2>
         {!free ? (
           <div className="mt-5 h-20 animate-pulse rounded-2xl bg-paper-2" />
         ) : withKey.length ? (

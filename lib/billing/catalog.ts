@@ -143,7 +143,7 @@ export const PLANS: Plan[] = [
     welcomeCredits: 15,
     rolloverMonths: 0,
     qualities: ["padrao"],
-    previewsPerDay: 3,
+    previewsPerDay: 2,
     concurrentBooks: 1,
     priority: "normal",
     features: ["Prévia grátis de qualquer livro", "15 mil palavras de boas-vindas + 5 mil por mês", "Revisão e edição", "EPUB e PDF"],

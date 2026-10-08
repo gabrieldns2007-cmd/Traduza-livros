@@ -117,6 +117,7 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
           options: { instructions, dialogueStyle, deepContext },
           providerId: choice?.providerId,
           confirmCost: choice?.confirmCost,
+          partial: choice?.partial,
         },
       });
       router.push(`/livros/${phase.book.id}`);
@@ -309,7 +310,7 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
             <button
               type="button"
               onClick={() => start("start")}
-              disabled={!!starting || !choice?.ready}
+              disabled={!!starting || !choice?.ready || !choice.creditsOk}
               className="link py-2 text-center text-[0.875rem] text-ink-2 hover:text-ink disabled:opacity-50 sm:text-left"
             >
               {starting === "start" ? "Começando…" : "Pular a prévia e traduzir tudo"}

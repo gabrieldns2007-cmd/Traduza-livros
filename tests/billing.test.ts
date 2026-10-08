@@ -135,9 +135,20 @@ describe("carteira", () => {
     expect(availableMilli(await wallet.read())).toBe(70_000);
   });
 
+  it("plano Grátis não libera a qualidade Premium", async () => {
+    await resetWallet();
+    process.env.BILLING_MODE = "enforce";
+    const bookId = await newBook(2, 5);
+    jobRunner.providerFactory = () => new FakeProvider("anthropic", "claude-opus-5-5");
+    await jobRunner.start(bookId);
+    const m = await waitFor(bookId, ["paused", "error", "done"]);
+    expect(m.status).toBe("paused");
+    expect(m.error).toMatch(/Premium não faz parte do plano Grátis/);
+  });
+
   it("limita as prévias grátis por dia", async () => {
     await resetWallet();
-    for (let i = 0; i < 3; i++) await wallet.notePreview();
+    for (let i = 0; i < 2; i++) await wallet.notePreview();
     await expect(wallet.notePreview()).rejects.toThrow(/prévias grátis de hoje/);
   });
 });
@@ -146,6 +157,11 @@ describe("motor de tradução com créditos (BILLING_MODE=enforce)", () => {
   it("sem créditos não começa; parcial traduz só o que o saldo cobre; depois de comprar, continua sem cobrar de novo", async () => {
     await resetWallet();
     process.env.BILLING_MODE = "enforce";
+    await wallet.setPlan("pro"); // Premium só no Pro
+    // o plano Pro dá 300 créditos: consome quase tudo antes para testar a falta de saldo
+    await wallet.reserve("ocupa", "x", (await wallet.read()).lots.reduce((n, l) => n + l.milli, 0) - 20_000);
+    await wallet.capture("ocupa", 1_000_000);
+    await wallet.release("ocupa");
     const bookId = await newBook(10, 10); // ~2.000 palavras × 12 créditos/1k (Premium) ≈ 24 créditos; saldo: 20
     const meta = (await store.get(bookId))!;
     const provider = new FakeProvider("anthropic", "claude-opus-5-5");
@@ -195,6 +211,7 @@ describe("motor de tradução com créditos (BILLING_MODE=enforce)", () => {
     await resetWallet();
     process.env.BILLING_MODE = "enforce";
     await applyPaymentEvent({ kind: "purchase.completed", accountId: "local", productId: "pack-300", externalId: "pay_m", amountBrl: 64.9 });
+    await wallet.setPlan("pro");
     const bookId = await newBook(4, 10);
     // um modelo “descontrolado”: 400 tokens de saída por palavra
     jobRunner.providerFactory = () => new FakeProvider("anthropic", "claude-opus-5-5", 400);
