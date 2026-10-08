@@ -125,6 +125,8 @@ export interface BookMeta {
   targetLanguage: string;
   status: BookStatus;
   error?: string;
+  /** motivo técnico da última parada (ex.: "credits") */
+  stopCode?: string;
   /** descrição curta da etapa atual, para a tela de progresso */
   phase?: string;
   activeChapterIds: string[];

@@ -36,6 +36,9 @@ export type BookView = BookMeta & {
   eta: number | null;
   queuePosition: number;
   isDemo: boolean;
+  /** capítulos concluídos e de onde a tradução continua (índice 0-based, -1 se terminou) */
+  doneChapters: number;
+  resumeIndex: number;
 };
 
 export function viewOf(meta: BookMeta): BookView {
@@ -45,6 +48,8 @@ export function viewOf(meta: BookMeta): BookView {
     eta: etaSeconds(meta),
     queuePosition: jobRunner.queuePosition(meta.id),
     isDemo: meta.provider?.id === "demo",
+    doneChapters: meta.chapters.filter((c) => c.status === "done").length,
+    resumeIndex: meta.chapters.findIndex((c) => c.status !== "done"),
   };
 }
 

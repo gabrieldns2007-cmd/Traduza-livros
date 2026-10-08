@@ -146,6 +146,16 @@ A fila grava o progresso em disco a cada lote. A página do livro consulta a API
 
 ---
 
+## Pausas, créditos e retomada
+
+O progresso é gravado em disco a cada lote traduzido (e o capítulo é marcado como concluído assim que termina). Se a conta do provedor ficar sem créditos, a tradução **pausa** com uma mensagem clara — nada é apagado. Depois de adicionar créditos, toque em **Continuar tradução**: o Verso confere nos arquivos o que já está traduzido, pula os capítulos concluídos, continua o capítulo interrompido a partir do trecho onde parou e mantém glossário, perfil e resumos.
+
+Para conferir, sem alterar nada, o que está salvo e de onde a tradução continua:
+
+```bash
+npm run status
+```
+
 ## Armazenamento
 
 ```

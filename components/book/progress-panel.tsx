@@ -30,7 +30,9 @@ function headline(book: BookView): { title: string; sub?: string; detail?: strin
       return { title, detail };
     }
     case "paused":
-      return { title: "Tradução pausada.", sub: "Continue quando quiser, de onde parou." };
+      return book.stopCode === "credits"
+        ? { title: "Tradução pausada: sem créditos.", sub: book.error }
+        : { title: "Tradução pausada.", sub: book.error ?? "Continue quando quiser, de onde parou." };
     case "error":
       return { title: "A tradução parou.", sub: book.error };
     default:
@@ -59,7 +61,11 @@ export function ProgressPanel({ book, onAction }: { book: BookView; onAction: (a
         <div className="min-w-0">
           <h2 className="serif text-[1.6rem] leading-tight tracking-[-0.015em] text-ink text-balance sm:text-[1.9rem]">{h.title}</h2>
           {h.detail && <p className="serif mt-1.5 truncate text-[1.0625rem] text-ink-2 italic">{h.detail}</p>}
-          {h.sub && <p className={`mt-1.5 text-[0.9375rem] leading-snug ${book.status === "error" ? "text-accent" : "text-ink-2"}`}>{h.sub}</p>}
+          {h.sub && (
+            <p className={`mt-1.5 text-[0.9375rem] leading-snug ${book.status === "error" || book.stopCode ? "text-accent" : "text-ink-2"}`}>
+              {h.sub}
+            </p>
+          )}
         </div>
         <p className="serif num shrink-0 text-[2.6rem] leading-none font-[350] tracking-[-0.03em] text-ink sm:text-[3.4rem]">
           {Math.floor(book.percent)}
@@ -94,8 +100,14 @@ export function ProgressPanel({ book, onAction }: { book: BookView; onAction: (a
           </Button>
         ) : (
           <Button onClick={() => run("resume")} disabled={busy}>
-            {book.status === "error" ? "Tentar de novo" : "Continuar tradução"}
+            Continuar tradução
           </Button>
+        )}
+        {!running && book.resumeIndex >= 0 && (
+          <p className="text-[0.8125rem] leading-snug text-muted">
+            {book.doneChapters} de {book.chapters.length} capítulos salvos. Continua do capítulo {book.resumeIndex + 1}
+            {book.chapters[book.resumeIndex].translatedSegments > 0 ? " (a partir do trecho onde parou)" : ""} — nada será traduzido de novo.
+          </p>
         )}
         {running && <p className="text-[0.8125rem] text-muted">Pode fechar esta página — a tradução continua no servidor.</p>}
       </div>

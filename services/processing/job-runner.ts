@@ -28,6 +28,8 @@ class JobRunner {
   /** livros retomados enquanto a execução anterior ainda estava terminando */
   private restart = new Set<string>();
   private analysisMutex = new KeyedMutex();
+  /** fábrica do provedor (substituível em testes) */
+  providerFactory: (id?: string) => TranslationProvider = getTranslationProvider;
 
   /** Retoma livros que estavam em andamento quando o servidor parou. */
   async init() {
@@ -59,6 +61,7 @@ class JobRunner {
     await store.update(bookId, (m) => {
       m.status = "queued";
       m.error = undefined;
+      m.stopCode = undefined;
       m.phase = this.current ? "Na fila — aguardando outro livro" : "Estamos preparando sua tradução";
     });
     this.enqueue(bookId);
@@ -121,8 +124,15 @@ class JobRunner {
     const meta = await store.get(bookId);
     if (!meta || meta.status === "paused" || meta.status === "done") return;
 
+    // confere o que já está traduzido em disco: capítulos completos ficam “done” e nunca são refeitos
+    const resume = await recountProgress(bookId);
+    if (resume)
+      console.info(
+        `[runner] ${bookId}: ${resume.doneChapters}/${resume.totalChapters} capítulos já concluídos; continuando de ${resume.nextChapterId ?? "—"}`,
+      );
+
     const settings = await readSettings();
-    const provider = getTranslationProvider(settings.providerId);
+    const provider = this.providerFactory(settings.providerId);
     await store.update(bookId, (m) => {
       m.provider = { id: provider.id, model: provider.model };
       m.progress.startedAt ??= new Date().toISOString();
@@ -232,11 +242,14 @@ class JobRunner {
       }
       const message =
         err instanceof ProviderError ? err.message : `Algo deu errado durante a tradução: ${err instanceof Error ? err.message : String(err)}`;
-      console.error(`[runner] livro ${bookId} parou com erro`, err);
+      console.error(`[runner] livro ${bookId} parou`, err);
+      // nada é apagado: o que já foi traduzido continua salvo e a tradução fica pausada, pronta para continuar
+      await recountProgress(bookId);
       await store.update(bookId, (m) => {
-        m.status = "error";
+        m.status = err instanceof ProviderError && err.fatal ? "paused" : "error";
         m.error = message;
-        m.phase = undefined;
+        m.stopCode = err instanceof ProviderError ? err.code : "other";
+        m.phase = m.status === "paused" ? "Pausado" : undefined;
         m.activeChapterIds = [];
         for (const c of m.chapters) if (c.status === "translating" || c.status === "analyzing") c.status = "pending";
       });
@@ -325,26 +338,42 @@ class JobRunner {
   }
 }
 
-/** Recalcula o progresso a partir dos segmentos gravados (após edições ou retraduções). */
+/**
+ * Reconcilia o progresso com o que está gravado em disco (fonte da verdade):
+ * conta palavras/segmentos traduzidos e marca como concluído todo capítulo
+ * cujos trechos já têm tradução. Nunca apaga traduções.
+ * Retorna o resumo da retomada (capítulos concluídos e próximo capítulo).
+ */
 export async function recountProgress(bookId: string) {
   const meta = await store.get(bookId);
-  if (!meta) return;
+  if (!meta) return null;
   const docs = new Map<string, Awaited<ReturnType<typeof store.readDoc>>>();
   for (const d of meta.docs) docs.set(d.id, await store.readDoc(bookId, d.id));
-  await store.update(bookId, (m) => {
+  const updated = await store.update(bookId, (m) => {
     let words = 0;
     let segs = 0;
     for (const c of m.chapters) {
       const range = docs.get(c.docId)?.segments.slice(c.start, c.end) ?? [];
-      c.translatedWords = range.filter((s) => s.out !== undefined).reduce((a, s) => a + s.words, 0);
-      c.translatedSegments = range.filter((s) => s.out !== undefined).length;
+      const translated = range.filter((s) => s.out !== undefined);
+      c.translatedWords = translated.reduce((a, s) => a + s.words, 0);
+      c.translatedSegments = translated.length;
       c.failedSegments = range.filter((s) => s.failed && s.out === undefined).length;
+      const complete = range.every((s) => s.out !== undefined || s.failed);
+      if (complete && c.status !== "translating") c.status = "done";
+      else if (!complete && c.status === "done") c.status = "pending";
       words += c.translatedWords;
       segs += c.translatedSegments;
     }
     m.progress.translatedWords = words;
     m.progress.translatedSegments = segs;
   });
+  const next = updated.chapters.find((c) => c.status !== "done");
+  return {
+    totalChapters: updated.chapters.length,
+    doneChapters: updated.chapters.filter((c) => c.status === "done").length,
+    nextChapterId: next?.id ?? null,
+    nextChapterIndex: next ? updated.chapters.indexOf(next) : -1,
+  };
 }
 
 const g = globalThis as unknown as { __versoRunner?: JobRunner };

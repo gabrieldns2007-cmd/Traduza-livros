@@ -4,7 +4,7 @@
  * Usa streaming (SSE) para não estourar timeouts em respostas longas.
  */
 import type { LLMClient, LLMRequest, LLMResponse } from "./types";
-import { ProviderError } from "./types";
+import { CREDIT_RE, ProviderError } from "./types";
 
 export class OpenAICompatibleClient implements LLMClient {
   readonly providerId = "openai";
@@ -75,7 +75,12 @@ export class OpenAICompatibleClient implements LLMClient {
         throw new ProviderError("A chave do provedor foi recusada. Verifique OPENAI_API_KEY.", { fatal: true });
       }
       if (res.status === 404) throw new ProviderError(`Modelo ou endereço não encontrado (${model}).`, { fatal: true });
-      if (res.status === 402) throw new ProviderError("O provedor informou falta de créditos.", { fatal: true });
+      if (res.status === 402 || CREDIT_RE.test(detail)) {
+        throw new ProviderError("O provedor informou falta de créditos. O progresso foi salvo — adicione créditos e toque em “Continuar tradução”.", {
+          fatal: true,
+          code: "credits",
+        });
+      }
       throw new ProviderError(`O provedor respondeu com erro ${res.status}: ${detail.slice(0, 300)}`, { fatal: res.status === 400 });
     }
 

@@ -43,5 +43,8 @@ export async function mapLimit<T>(items: T[], limit: number, fn: (item: T, index
       await fn(items[i], i);
     }
   });
-  await Promise.all(workers);
+  // espera TODOS terminarem (nenhum trabalho continua rodando “solto” depois de um erro)
+  const results = await Promise.allSettled(workers);
+  const failure = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (failure) throw failure.reason;
 }

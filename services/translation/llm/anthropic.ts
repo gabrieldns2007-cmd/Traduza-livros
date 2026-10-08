@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { LLMClient, LLMRequest, LLMResponse, Effort } from "./types";
-import { ProviderError } from "./types";
+import { CREDIT_RE, ProviderError } from "./types";
 
 /** Modelos que aceitam `output_config.effort` e saída estruturada. */
 function isModernModel(model: string): boolean {
@@ -78,26 +78,35 @@ export class AnthropicClient implements LLMClient {
 
 function mapAnthropicError(err: unknown, model: string): unknown {
   if (err instanceof Anthropic.APIUserAbortError) return err;
+  const message = err instanceof Error ? err.message : String(err);
+  // falta de créditos pode vir como 400, 402 ou como evento de erro no meio do streaming
+  if (CREDIT_RE.test(message) || (err instanceof Anthropic.APIError && err.status === 402)) {
+    return new ProviderError(
+      "Sua conta da Anthropic ficou sem créditos. O progresso foi salvo — adicione créditos em console.anthropic.com e toque em “Continuar tradução”.",
+      { fatal: true, cause: err, code: "credits" },
+    );
+  }
   if (err instanceof Anthropic.AuthenticationError || err instanceof Anthropic.PermissionDeniedError) {
-    return new ProviderError("A chave da Anthropic foi recusada. Verifique ANTHROPIC_API_KEY no arquivo .env.local.", { fatal: true, cause: err });
+    return new ProviderError("A chave da Anthropic foi recusada. Verifique ANTHROPIC_API_KEY no arquivo .env.local.", {
+      fatal: true,
+      cause: err,
+      code: "auth",
+    });
   }
   if (err instanceof Anthropic.NotFoundError) {
-    return new ProviderError(`O modelo “${model}” não foi encontrado. Verifique ANTHROPIC_MODEL.`, { fatal: true, cause: err });
+    return new ProviderError(`O modelo “${model}” não foi encontrado. Verifique ANTHROPIC_MODEL.`, { fatal: true, cause: err, code: "model" });
   }
   if (err instanceof Anthropic.BadRequestError) {
-    if (/credit balance|billing|purchase credits/i.test(err.message)) {
-      return new ProviderError("Sua conta da Anthropic está sem créditos. Adicione créditos e continue a tradução.", { fatal: true, cause: err });
-    }
-    return new ProviderError(`O provedor recusou o pedido: ${err.message}`, { fatal: false, cause: err });
+    return new ProviderError(`O provedor recusou o pedido: ${message}`, { fatal: false, cause: err, code: "bad_request" });
   }
   if (err instanceof Anthropic.RateLimitError) {
-    return new ProviderError("Limite de uso do provedor atingido. Vamos tentar de novo em instantes.", { fatal: false, cause: err });
+    return new ProviderError("Limite de uso do provedor atingido.", { fatal: false, cause: err, code: "rate_limit" });
   }
   if (err instanceof Anthropic.APIConnectionError) {
-    return new ProviderError("Falha de conexão com a Anthropic.", { fatal: false, cause: err });
+    return new ProviderError("Falha de conexão com a Anthropic.", { fatal: false, cause: err, code: "network" });
   }
   if (err instanceof Anthropic.APIError) {
-    return new ProviderError(`Erro temporário do provedor (${err.status ?? "?"}).`, { fatal: false, cause: err });
+    return new ProviderError(`Erro temporário do provedor (${err.status ?? "?"}).`, { fatal: false, cause: err, code: "server" });
   }
   return err;
 }

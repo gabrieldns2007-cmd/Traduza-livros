@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "format": "prettier --write ."
+    "format": "prettier --write .",
+    "status": "node scripts/book-status.mjs"
   },
   "engines": {
     "node": ">=20.9"

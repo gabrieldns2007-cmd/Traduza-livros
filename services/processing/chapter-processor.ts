@@ -16,6 +16,7 @@ import { mergeCandidates, relevantEntries } from "@/services/glossary/glossary";
 import type { BatchSegment, BookContext, TranslationProvider } from "@/services/translation/translation-provider";
 import { ProviderError } from "@/services/translation/llm/types";
 import { truncate } from "@/utils/text";
+import { sleep } from "@/utils/async";
 
 export interface ProcessorHooks {
   /** chamado após cada lote, com palavras/segmentos traduzidos nele */
@@ -208,10 +209,12 @@ async function translateBatchWithRetries(
       if (err instanceof ProviderError && err.fatal) throw err;
       // erro temporário que sobreviveu às novas tentativas do SDK
       transient++;
-      if (transient > 3) throw err;
-      const wait = 15000 * 2 ** (transient - 1);
+      // limite de uso: espera mais (contas novas têm limites baixos); outros erros: 3 tentativas
+      const isRate = err instanceof ProviderError && err.code === "rate_limit";
+      if (transient > (isRate ? 8 : 3)) throw err;
+      const wait = Math.min(15000 * 2 ** (transient - 1), 5 * 60_000);
       console.warn(`[processor] erro temporário (tentativa ${transient}); aguardando ${wait / 1000}s`, err);
-      await new Promise((r) => setTimeout(r, wait));
+      await sleep(wait, hooks.signal);
     }
   }
 

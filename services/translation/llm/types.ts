@@ -33,13 +33,22 @@ export interface LLMClient {
  * Erro do provedor. `fatal` = não adianta tentar de novo (chave inválida,
  * modelo inexistente, sem créditos). A mensagem é mostrada ao usuário.
  */
+export type ProviderErrorCode = "credits" | "auth" | "model" | "rate_limit" | "bad_request" | "network" | "server" | "other";
+
 export class ProviderError extends Error {
   readonly fatal: boolean;
-  constructor(message: string, opts: { fatal: boolean; cause?: unknown }) {
+  readonly code: ProviderErrorCode;
+  constructor(message: string, opts: { fatal: boolean; cause?: unknown; code?: ProviderErrorCode }) {
     super(message, { cause: opts.cause });
+    this.name = "ProviderError";
     this.fatal = opts.fatal;
+    this.code = opts.code ?? "other";
   }
 }
+
+/** Mensagens da API que indicam falta de créditos/saldo (chegam como 400, 402 ou erro no meio do streaming). */
+export const CREDIT_RE =
+  /credit balance|insufficient[_ ]?(credit|funds|quota|balance)|billing|purchase credits|payment required|exceeded your current quota/i;
 
 export function isAbortError(err: unknown): boolean {
   if (!(err instanceof Error) || err instanceof ProviderError) return false;
