@@ -1,0 +1,22 @@
+{
+  // Atalhos para usar o Verso pelo celular, sem digitar comandos:
+  // menu ☰ → Terminal → Run Task… → escolha a tarefa.
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Verso: 1. ver livros salvos",
+      "type": "shell",
+      "command": "npm run status",
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always", "focus": true }
+    },
+    {
+      "label": "Verso: 2. abrir o site",
+      "type": "shell",
+      "command": "npm install && npm run app",
+      "isBackground": true,
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always" }
+    }
+  ]
+}
