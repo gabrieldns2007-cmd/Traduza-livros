@@ -1,0 +1,247 @@
+@import "tailwindcss";
+
+/*
+ * Verso — sistema visual
+ * Papel quente, tinta quase preta, uma única cor de destaque (vermelho de
+ * rubrica, como nos livros antigos). Serifada para o que é editorial,
+ * sem serifa para a interface. Linhas finas em vez de caixas e sombras.
+ */
+
+:root {
+  --paper: #fbf9f4;
+  --paper-2: #f3f0e8;
+  --paper-3: #ebe6db;
+  --ink: #1c1b19;
+  --ink-2: #4a463f;
+  --muted: #8a847a;
+  --rule: #e4ded2;
+  --rule-strong: #cfc7b8;
+  --accent: #b0401c;
+  --accent-soft: #f4e3db;
+  --ok: #3d6b4f;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #131210;
+    --paper-2: #1b1a17;
+    --paper-3: #24221e;
+    --ink: #ebe6dc;
+    --ink-2: #bdb6a9;
+    --muted: #8a8478;
+    --rule: #2b2925;
+    --rule-strong: #3d3a34;
+    --accent: #e0805f;
+    --accent-soft: #3a2219;
+    --ok: #8fbf9f;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-paper-3: var(--paper-3);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-muted: var(--muted);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: var(--ok);
+  --font-serif: var(--font-newsreader), "Iowan Old Style", "Palatino Linotype", Georgia, serif;
+  --font-sans: var(--font-instrument), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--font-sans);
+    font-feature-settings: "kern", "liga";
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 3px;
+    border-radius: 4px;
+  }
+  button,
+  select,
+  input,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: default;
+  }
+}
+
+@layer components {
+  /* rótulo em versaletes — usado para pequenos títulos de seção */
+  .label {
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .serif {
+    font-family: var(--font-serif);
+    font-optical-sizing: auto;
+  }
+  .num {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+  .hairline {
+    border-color: var(--rule);
+  }
+  .link {
+    text-decoration: underline;
+    text-decoration-color: var(--rule-strong);
+    text-underline-offset: 0.22em;
+    text-decoration-thickness: 1px;
+    transition: text-decoration-color 0.2s;
+  }
+  .link:hover {
+    text-decoration-color: currentColor;
+  }
+
+  /* texto de livro (revisão) */
+  .book-text {
+    font-family: var(--font-serif);
+    font-optical-sizing: auto;
+    font-size: 1.1875rem;
+    line-height: 1.68;
+    hyphens: auto;
+    -webkit-hyphens: auto;
+    overflow-wrap: break-word;
+  }
+  .book-text em,
+  .book-text .it {
+    font-style: italic;
+  }
+  .book-text strong,
+  .book-text .bd {
+    font-weight: 600;
+  }
+  .book-text .sc {
+    font-variant-caps: all-small-caps;
+    letter-spacing: 0.03em;
+  }
+  .book-text sup {
+    font-size: 0.65em;
+    line-height: 0;
+  }
+  .book-text .inline-object {
+    display: inline-block;
+    width: 0.35em;
+  }
+  .original-text {
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    line-height: 1.6;
+    color: var(--muted);
+  }
+  .original-text em {
+    font-style: italic;
+  }
+}
+
+/* animações discretas */
+@keyframes verso-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.8);
+  }
+}
+.pulse-dot {
+  animation: verso-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes verso-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: verso-rise 0.5s var(--ease-out-soft) both;
+}
+
+@keyframes verso-sheet {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+.sheet-in {
+  animation: verso-sheet 0.32s var(--ease-out-soft) both;
+}
+
+@keyframes verso-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.fade-in {
+  animation: verso-fade 0.25s ease-out both;
+}
+
+@keyframes verso-shimmer {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+.shimmer {
+  animation: verso-shimmer 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pulse-dot,
+  .rise,
+  .sheet-in,
+  .fade-in,
+  .shimmer {
+    animation: none;
+  }
+}
+
+/* área segura do iPhone para barras fixas */
+.pb-safe {
+  padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+}
