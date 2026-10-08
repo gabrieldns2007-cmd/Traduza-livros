@@ -4,7 +4,7 @@
   "private": true,
   "description": "Verso — tradução de livros inteiros, capítulo por capítulo, preservando a estrutura.",
   "scripts": {
-    "dev": "next dev -H 0.0.0.0",
+    "dev": "node scripts/dev.mjs",
     "build": "next build",
     "start": "next start -H 0.0.0.0",
     "typecheck": "tsc --noEmit",
