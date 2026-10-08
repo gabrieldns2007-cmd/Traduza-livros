@@ -22,6 +22,16 @@ O servidor já escuta em todas as interfaces (`-H 0.0.0.0`). Na mesma rede Wi-Fi
 
 Para usar fora de casa, rode em um servidor (VPS, Railway, Fly.io, Render…) com um volume persistente e **defina `APP_PASSWORD`**.
 
+### Atualizar (GitHub Codespaces, pelo celular)
+
+Uma vez só, no terminal:
+
+```bash
+git stash; git pull origin claude/book-translation-webapp-qahww8 && npm run atualizar
+```
+
+Depois, sempre que houver novidade: `npm run atualizar` (ou menu ☰ → Terminal → Run Task… → **Verso: 1. atualizar e abrir o site**). Ele guarda alterações locais, baixa a versão nova, instala o que faltar e reabre o site. Os livros (`data/`) e o `.env.local` nunca são tocados.
+
 ### Vender traduções (serviço comercial)
 
 O cliente compra **a tradução de um livro**, não “IA”: ele nunca vê qual serviço de IA traduz, tokens ou custos.
@@ -29,8 +39,10 @@ O cliente compra **a tradução de um livro**, não “IA”: ele nunca vê qual
 **Página inicial** (botão _Traduzir meu livro_) → **Confirmar** (idioma, tipo de tradução, preço e o que está incluído) → **Pagar e traduzir** → “Pagamento confirmado.” → **Acompanhamento** (Livro → Processando → Traduzindo → Revisando → Pronto) → **Baixar** EPUB e PDF.
 
 - **Preços** (`/precos`): Padrão R$ 0,39 e Literária R$ 1,49 por mil palavras + R$ 1,90 por pedido, mínimo R$ 9,90 (ex.: livro de 44 mil palavras = R$ 19,90 / R$ 67,90). Conta em `lib/billing/pricing.ts`; um teste impede preços que deem prejuízo.
-- **Painel** (`/admin`, senha `ADMIN_PASSWORD`): pedidos, status do pagamento, serviço e modelo, tokens, custo estimado e real, preço, lucro e margem, erros técnicos, ordem dos serviços de IA de cada tipo de tradução e as chaves.
-- **Pagamentos:** nenhum meio de pagamento real está ligado. Com `CHECKOUT_MODE=beta` (padrão) o cliente confirma sem pagar. Para testar a experiência de pagamento sem dinheiro: `CHECKOUT_MODE=live` e `PAYMENT_PROVIDER=simulado`. Veja `docs/monetizacao.md`.
+- **Painel** (`/admin`): no primeiro acesso, ele pede para criar a senha (guardada só como hash; ou use `ADMIN_PASSWORD`). Mostra pedidos, status do pagamento, serviço e modelo, tokens, custo estimado e real, preço, lucro e margem e erros técnicos. Ali você também escolhe a ordem dos serviços de IA, as chaves, como o cliente paga e seus dados de contato.
+- **Pagamentos:** nenhum meio de pagamento real está ligado. No painel → Vendas: **Beta** (grátis para o cliente, o padrão) ou **Teste de pagamento** (página de pagamento simulada, sem dinheiro, que só você aprova). Veja `docs/monetizacao.md`.
+- **Privacidade entre clientes:** não há contas; cada navegador recebe um identificador aleatório e só vê os livros que enviou. O painel vê todos.
+- **Termos de uso** (`/termos`) e **Política de privacidade** (`/privacidade`), com o nome e o e-mail informados no painel. Peça para um advogado revisar antes de cobrar.
 
 ### Produção
 
@@ -248,7 +260,7 @@ Backup = copiar a pasta. Apagar um livro = apagar a pasta dele (ou usar “Exclu
 
 - Chaves de API só no servidor (variáveis de ambiente); nada sensível vai para o navegador.
 - `APP_PASSWORD` protege todas as páginas e rotas (cookie assinado com HMAC, limite de tentativas).
-- `ADMIN_PASSWORD` protege o painel administrativo (`/admin` e `/api/admin/*`). No servidor, o cliente não consegue escolher o serviço de IA nem começar uma tradução sem pedido (a API recusa).
+- A senha do painel (criada no próprio painel, ou `ADMIN_PASSWORD`) protege `/admin` e `/api/admin/*`. No servidor, o cliente não consegue escolher o serviço de IA nem começar uma tradução sem pedido (a API recusa).
 - Envios validados por extensão, assinatura do arquivo e tamanho (`MAX_UPLOAD_MB`); pacotes com descompressão excessiva são recusados.
 - Conteúdo do livro nunca é executado: a interface mostra o texto com HTML reconstruído só com tags seguras e sem atributos; imagens são servidas com `Content-Security-Policy: sandbox` e `nosniff`.
 - O texto vai ao provedor de IA apenas para ser traduzido.

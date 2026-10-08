@@ -7,11 +7,11 @@
  * Enquanto não há meio de pagamento (CHECKOUT_MODE=beta, o padrão), confirmar
  * o pedido não cobra nada: ele fica registrado como “beta”. Com
  * CHECKOUT_MODE=live, a confirmação abre o pagamento do meio escolhido em
- * PAYMENT_PROVIDER e a tradução só começa quando ele avisa que foi pago
- * (webhook). PAYMENT_PROVIDER=simulado testa tudo isso sem dinheiro.
+ * no painel (ou em PAYMENT_PROVIDER) e a tradução só começa quando ele avisa
+ * que foi pago (webhook). O pagamento simulado testa tudo isso sem dinheiro.
  */
 import type { BookMeta, BookOrder } from "@/types/book";
-import { store, readSettings } from "@/lib/storage";
+import { store, readSettings, type Settings } from "@/lib/storage";
 import { priceFor, SERVICE_LEVELS, serviceLevel } from "@/lib/billing/pricing";
 import { paymentProvider } from "@/services/billing/payments";
 import { jobRunner } from "@/services/processing/job-runner";
@@ -20,8 +20,23 @@ import { applySetup, type SetupBody } from "./setup";
 
 export type CheckoutMode = "beta" | "live";
 
-export function checkoutMode(): CheckoutMode {
-  return process.env.CHECKOUT_MODE === "live" ? "live" : "beta";
+export interface CheckoutConfig {
+  mode: CheckoutMode;
+  /** meio de pagamento (com mode "live") */
+  provider: string | null;
+  /** definido no .env (tem prioridade sobre o painel) */
+  fromEnv: boolean;
+}
+
+/** Como o cliente paga: escolhido no painel; CHECKOUT_MODE e PAYMENT_PROVIDER no .env têm prioridade. */
+export async function checkoutConfig(settings?: Settings): Promise<CheckoutConfig> {
+  const s = settings ?? (await readSettings());
+  const env = process.env.CHECKOUT_MODE;
+  return {
+    mode: env === "live" || env === "beta" ? env : (s.checkout?.mode ?? "beta"),
+    provider: process.env.PAYMENT_PROVIDER || s.checkout?.provider || null,
+    fromEnv: Boolean(env || process.env.PAYMENT_PROVIDER),
+  };
 }
 
 export class OrderError extends Error {
@@ -54,6 +69,7 @@ export interface Offer {
 /** O que o cliente vê antes de pagar: palavras e o preço de cada tipo de tradução. */
 export async function offerFor(meta: BookMeta): Promise<Offer> {
   const settings = await readSettings();
+  const checkout = await checkoutConfig(settings);
   const words = remainingWords(meta);
   return {
     title: meta.translatedTitle && meta.status === "done" ? meta.translatedTitle : meta.title,
@@ -72,7 +88,7 @@ export async function offerFor(meta: BookMeta): Promise<Offer> {
       available: levelOffered(l.id, settings),
     })),
     order: meta.order ?? null,
-    checkout: { mode: checkoutMode(), payments: Boolean(paymentProvider()) },
+    checkout: { mode: checkout.mode, payments: Boolean(paymentProvider(checkout.provider)) },
   };
 }
 
@@ -108,11 +124,12 @@ export async function confirmOrder(meta: BookMeta, origin: string): Promise<{ st
   const order = meta.order;
   if (!order || order.status === "canceled") throw new OrderError("Escolha o tipo de tradução antes de confirmar.", 409);
   if (order.status === "paid") return { started: false };
-  if (checkoutMode() === "beta") {
+  const checkout = await checkoutConfig();
+  if (checkout.mode === "beta") {
     await markPaid(meta.id, order.id, { payment: "beta" });
     return { started: true };
   }
-  const provider = paymentProvider();
+  const provider = paymentProvider(checkout.provider);
   if (!provider) throw new OrderError("Os pagamentos ainda não estão disponíveis.", 503);
   const { url } = await provider.createCheckout({
     accountId: "local",
@@ -131,7 +148,7 @@ export async function confirmOrder(meta: BookMeta, origin: string): Promise<{ st
 export async function markPaid(
   bookId: string,
   orderId: string,
-  opts: { payment: "beta" | "provider"; externalId?: string; amountBrl?: number },
+  opts: { payment: "beta" | "provider"; externalId?: string; amountBrl?: number; provider?: string },
 ): Promise<boolean> {
   const meta = await store.get(bookId);
   if (!meta?.order || meta.order.id !== orderId) return false;
@@ -146,7 +163,7 @@ export async function markPaid(
     m.order.status = "paid";
     m.order.payment = opts.payment;
     m.order.paidAt = new Date().toISOString();
-    if (opts.payment === "provider") m.order.paymentProvider = process.env.PAYMENT_PROVIDER || undefined;
+    if (opts.provider) m.order.paymentProvider = opts.provider;
     if (opts.externalId) m.order.externalId = opts.externalId;
     // o serviço é escolhido por dentro, conforme o tipo de tradução
     m.provider = undefined;

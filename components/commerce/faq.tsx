@@ -24,8 +24,12 @@ export const FAQ: [string, string][] = [
     "A tradução é para o seu uso. Para publicar ou vender, você precisa da autorização de quem tem os direitos do livro (exceto obras em domínio público).",
   ],
   [
+    "Consigo ver meus livros em outro aparelho?",
+    "Por enquanto não é preciso criar conta: os livros ficam ligados ao navegador em que foram enviados. Se trocar de aparelho, fale com a gente pelo e-mail de contato.",
+  ],
+  [
     "O que acontece com o meu arquivo?",
-    "Ele é usado para fazer a sua tradução e fica guardado para você revisar e baixar. Não é publicado nem vendido, e você pode excluí-lo quando quiser.",
+    "Ele é usado para fazer a sua tradução e fica guardado para você revisar e baixar. Não é publicado nem vendido, e você pode excluí-lo quando quiser. Detalhes na Política de privacidade.",
   ],
 ];
 

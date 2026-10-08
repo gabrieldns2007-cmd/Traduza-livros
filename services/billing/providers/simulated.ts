@@ -6,10 +6,12 @@
  * Verso (/pagamento/simulado) e só o administrador pode aprovar. Nenhum
  * dinheiro é cobrado, nenhum cartão é pedido.
  *
- * Ligado com CHECKOUT_MODE=live e PAYMENT_PROVIDER=simulado.
+ * Ligado no painel (Pagamentos → Teste de pagamento) ou com CHECKOUT_MODE=live
+ * e PAYMENT_PROVIDER=simulado.
  */
-import { ADMIN_COOKIE, adminEnabled, hmac, isValidAdmin } from "@/lib/auth";
-import { serverSecret } from "../secret";
+import { ADMIN_COOKIE, hmac } from "@/lib/auth";
+import { adminCookieOf, isAdminToken } from "@/services/admin/access";
+import { serverSecret } from "@/services/secret";
 import { PaymentError, type CheckoutRequest, type PaymentEvent, type PaymentProvider } from "../payment-types";
 
 export interface SimulatedSession {
@@ -80,12 +82,16 @@ export const simulatedProvider: PaymentProvider = {
     if (!session) throw new PaymentError("Sessão de pagamento inválida ou expirada.", 400);
     if (body.result !== "approved") return null;
     // ninguém além do administrador aprova um pagamento simulado
-    if (adminEnabled()) {
-      const cookie = new RegExp(`(?:^|;\\s*)${ADMIN_COOKIE}=([^;]+)`).exec(request.headers.get("cookie") ?? "")?.[1];
-      if (!(await isValidAdmin(cookie && decodeURIComponent(cookie)))) {
-        throw new PaymentError("Só o administrador pode aprovar um pagamento simulado.", 403);
-      }
+    if (!(await isAdminToken(adminCookieOf(request, ADMIN_COOKIE)))) {
+      throw new PaymentError("Só o administrador pode aprovar um pagamento simulado.", 403);
     }
-    return { kind: "purchase.completed", accountId: "local", productId: session.productId, externalId: session.id, amountBrl: session.amountBrl };
+    return {
+      kind: "purchase.completed",
+      accountId: "local",
+      productId: session.productId,
+      externalId: session.id,
+      amountBrl: session.amountBrl,
+      provider: "simulado",
+    };
   },
 };

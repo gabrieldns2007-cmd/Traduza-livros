@@ -8,7 +8,7 @@
  *
  * Para ligar um meio de pagamento (Mercado Pago, Stripe…), implemente
  * `PaymentProvider` em services/billing/providers/ e registre em
- * `paymentProvider()`. O resto do Verso só conhece eventos normalizados
+ * `paymentProvider()`. O meio em uso vem do painel (ou de PAYMENT_PROVIDER). O resto do Verso só conhece eventos normalizados
  * (`PaymentEvent`), aplicados por `applyPaymentEvent`:
  *
  *   “Pagar e traduzir” → createCheckout → página do meio de pagamento
@@ -39,9 +39,9 @@ export const PAYMENT_PROVIDERS = [
   { id: "stripe", label: "Stripe (cartão, Pix)", implemented: false },
 ] as const;
 
-/** O meio de pagamento escolhido em PAYMENT_PROVIDER — null se nenhum (ou não implementado). */
-export function paymentProvider(): PaymentProvider | null {
-  switch (process.env.PAYMENT_PROVIDER) {
+/** O meio de pagamento pelo nome (PAYMENT_PROVIDER ou painel) — null se nenhum ou não implementado. */
+export function paymentProvider(id: string | null | undefined): PaymentProvider | null {
+  switch (id) {
     case "simulado":
       return simulatedProvider;
     // a implementar quando houver conta (e sua autorização):
@@ -53,8 +53,7 @@ export function paymentProvider(): PaymentProvider | null {
 }
 
 /** Situação dos pagamentos, para o painel administrativo. */
-export function paymentSetup() {
-  const wanted = process.env.PAYMENT_PROVIDER || null;
+export function paymentSetup(wanted: string | null) {
   const info = PAYMENT_PROVIDERS.find((p) => p.id === wanted);
   return { wanted, label: info?.label ?? null, implemented: Boolean(info?.implemented), available: PAYMENT_PROVIDERS };
 }
@@ -68,7 +67,7 @@ export async function applyPaymentEvent(event: PaymentEvent): Promise<boolean> {
   const order = /^order:([a-z0-9-]+):(ord_[\w-]+)$/.exec(event.productId);
   if (order && event.kind === "purchase.completed") {
     const { markPaid } = await import("@/services/commerce/orders");
-    return markPaid(order[1], order[2], { payment: "provider", externalId: event.externalId, amountBrl: event.amountBrl });
+    return markPaid(order[1], order[2], { payment: "provider", externalId: event.externalId, amountBrl: event.amountBrl, provider: event.provider });
   }
   if (order && event.kind === "refund") {
     const { markRefunded } = await import("@/services/commerce/orders");

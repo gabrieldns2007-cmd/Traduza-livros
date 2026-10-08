@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { BookView } from "@/lib/api";
 import { api } from "@/lib/client";
 import { LANGUAGES, languageLabel } from "@/lib/languages";
@@ -237,6 +238,17 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
           : canPay
             ? "Pagamento único, sem assinatura e sem cobrança automática."
             : "Estamos preparando os pagamentos. Volte em breve."}
+      </p>
+      <p className="mt-1 text-center text-[0.8125rem] leading-relaxed text-muted">
+        Ao continuar, você concorda com os{" "}
+        <Link href="/termos" className="link">
+          Termos de uso
+        </Link>{" "}
+        e a{" "}
+        <Link href="/privacidade" className="link">
+          Política de privacidade
+        </Link>
+        .
       </p>
       {!sampleState && (
         <button

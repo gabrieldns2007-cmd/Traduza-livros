@@ -218,6 +218,10 @@ export interface Settings extends ProviderSettings {
   routing?: { padrao?: string[]; literaria?: string[] };
   /** oferecer a Tradução Literária (usa um serviço pago, coberto pelo preço) */
   offerLiteraria?: boolean;
+  /** pagamentos (painel): beta grátis ou “live” com um meio de pagamento; o .env tem prioridade */
+  checkout?: { mode?: "beta" | "live"; provider?: string };
+  /** quem vende (aparece nos termos, na privacidade e no rodapé) */
+  business?: { name?: string; email?: string };
   targetLanguage: string;
   dialogueStyle: "target" | "source";
   deepContext: boolean;

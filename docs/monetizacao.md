@@ -70,18 +70,21 @@ tradução + o custo fixo, com a margem mínima.
 **Pedido e pagamento** (`services/commerce/orders.ts`, `services/billing/payments.ts`):
 ao tocar em “Pagar e traduzir”, o preço fica travado no pedido (`BookMeta.order`) e:
 
-- `CHECKOUT_MODE=beta` (padrão): o pedido é confirmado como “beta” e a tradução
+- **Beta** (padrão): o pedido é confirmado como “beta” e a tradução
   começa — nada é cobrado;
-- `CHECKOUT_MODE=live` + `PAYMENT_PROVIDER`: a pessoa vai para a página do meio de
+O modo de pagamento é escolhido no painel (Vendas); `CHECKOUT_MODE` e
+`PAYMENT_PROVIDER` no `.env.local`, se definidos, têm prioridade.
+
+- **Pagamentos ligados** (`live`) com um meio de pagamento: a pessoa vai para a página do meio de
   pagamento; a tradução só começa quando ele avisa o servidor
   (`POST /api/payments/webhook/<meio>` → `applyPaymentEvent`, produto
   `order:<livro>:<pedido>`). O retorno do navegador nunca vale como prova de
   pagamento; avisos repetidos são ignorados; aviso com valor menor que o preço não
   libera a tradução; reembolso fica registrado no pedido;
-- `PAYMENT_PROVIDER=simulado`: um meio de pagamento **de teste**, dentro do próprio
-  site, para ver a experiência completa sem dinheiro. Só o administrador aprova o
-  pagamento simulado (quando `ADMIN_PASSWORD` está definida). Nunca deixe ligado
-  com clientes de verdade;
+- **Teste de pagamento** (`simulado`): um meio de pagamento **de teste**, dentro do
+  próprio site, para ver a experiência completa sem dinheiro. Só o administrador
+  (logado no painel) aprova o pagamento simulado. Nunca deixe ligado com clientes
+  de verdade;
 - sem meio de pagamento implementado, a confirmação mostra “Pagamentos em breve”.
 
 **Quem traduz** (`services/commerce/routing.ts`, editável no painel):
@@ -93,7 +96,19 @@ ao tocar em “Pagar e traduzir”, o preço fica travado no pedido (`BookMeta.o
 - Literária: Anthropic. Só é vendida quando o administrador liga “Vender a tradução
   Literária” no painel — antes disso aparece como “Em breve”.
 
-**Painel administrativo** (`/admin`, senha `ADMIN_PASSWORD`): pedidos, valor dos
+**Privacidade entre clientes** (`services/commerce/ownership.ts`): sem contas, cada
+navegador recebe um identificador aleatório (cookie httpOnly) e só abre os livros que
+enviou — o proxy devolve 404 para o livro de outra pessoa. O painel vê todos; livros
+antigos, sem dono, só o painel vê.
+
+**Textos legais:** `/termos` e `/privacidade` usam o nome e o e-mail informados no
+painel. Dizem a verdade sobre o serviço: tradução automática, pagamento único,
+desistência em 7 dias (CDC, art. 49) e que, nos planos gratuitos, alguns provedores
+de IA podem usar o texto para melhorar os próprios serviços. Ao trocar para planos
+pagos desses provedores (que não usam os dados), atualize a seção 4 da privacidade.
+Revise com um advogado antes de cobrar.
+
+**Painel administrativo** (`/admin`; a senha é criada no primeiro acesso ou vem de `ADMIN_PASSWORD`): pedidos, valor dos
 pedidos (beta) ou receita, custo real (só serviços pagos) e quanto custaria pela
 tabela, margem por livro, erros técnicos, histórico de execuções, ordem dos serviços
 por tipo, tabela de preços com margem e as chaves dos serviços.

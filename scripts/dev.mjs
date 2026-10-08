@@ -41,10 +41,11 @@ async function warmUp() {
   const routes = [
     "/",
     "/livros",
-    "/configuracoes",
-    "/api/settings",
+    "/precos",
+    "/admin",
+    "/api/admin/overview",
     "/api/books",
-    ...(first ? [`/livros/${first}`, `/api/books/${first}`, `/api/books/${first}/providers`, `/api/books/${first}/glossary`] : []),
+    ...(first ? [`/livros/${first}`, `/api/books/${first}`, `/api/books/${first}/offer`, `/api/books/${first}/glossary`] : []),
     ...ids.slice(1).map((id) => `/livros/${id}`),
   ];
   console.log("\n  Preparando as páginas (só na primeira vez; pode levar alguns minutos)…");
@@ -55,5 +56,5 @@ async function warmUp() {
       /* segue para a próxima */
     }
   }
-  console.log(`\n  ✓ Site pronto. Abra a porta ${port} (aba Portas → globo).\n`);
+  console.log(`\n  ✓ Site pronto. Abra a porta ${port} (aba Portas → globo). Seu painel fica em /admin.\n`);
 }

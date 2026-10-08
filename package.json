@@ -5,6 +5,7 @@
   "description": "Verso — tradução de livros inteiros, capítulo por capítulo, preservando a estrutura.",
   "scripts": {
     "dev": "node scripts/dev.mjs",
+    "atualizar": "node scripts/update.mjs",
     "build": "next build",
     "start": "next start -H 0.0.0.0",
     "typecheck": "tsc --noEmit",

@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Chevron } from "@/components/ui/icons";
 import { RunCosts } from "@/components/book/run-costs";
 import { SettingsForm } from "@/components/settings/settings-form";
+import { PasswordForm, StoreSettings } from "./store-settings";
 
 type LevelId = "padrao" | "literaria";
 
@@ -80,7 +81,9 @@ interface Overview {
   allProviders: Service[];
   offerLiteraria: boolean;
   pricing: { minimumBrl: number; orderFeeBrl: number; levels: { id: LevelId; label: string; per1kBrl: number; examples: Example[] }[] };
-  admin: { passwordSet: boolean };
+  admin: { passwordSet: boolean; source: "env" | "panel" | null };
+  checkoutFromEnv: boolean;
+  business: { name?: string; email?: string };
 }
 
 const STATUS: Record<string, string> = {
@@ -133,6 +136,7 @@ function when(iso: string) {
 export function AdminDashboard() {
   const [data, setData] = useState<Overview | null>(null);
   const [error, setError] = useState("");
+  const [created, setCreated] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -174,13 +178,34 @@ export function AdminDashboard() {
       {data && (
         <>
           {!data.admin.passwordSet && (
-            <p className="mt-6 rounded-2xl bg-paper-2 px-5 py-4 text-[0.875rem] leading-relaxed text-ink-2">
-              <strong className="font-medium text-ink">Painel sem senha.</strong> Antes de abrir o site para clientes, defina{" "}
-              <code>ADMIN_PASSWORD</code> no arquivo <code>.env</code> — senão qualquer pessoa com o endereço pode ver esta página.
+            <section className="mt-6 rounded-[1.25rem] border border-accent/50 px-5 py-6 sm:px-6">
+              <p className="serif text-[1.35rem] leading-snug text-ink">Crie a senha do painel.</p>
+              <p className="mt-1.5 mb-5 text-[0.875rem] leading-relaxed text-ink-2">
+                Sem ela, qualquer pessoa com o endereço pode abrir esta página. Você só precisa fazer isso uma vez.
+              </p>
+              <PasswordForm
+                mode="create"
+                onDone={() => {
+                  setCreated(true);
+                  load();
+                }}
+              />
+            </section>
+          )}
+          {created && (
+            <p className="mt-6 rounded-2xl bg-paper-2 px-5 py-4 text-[0.9375rem] leading-relaxed text-ink-2" role="status">
+              <strong className="font-medium text-ok">Senha criada.</strong> Guarde-a bem: ela será pedida para abrir o painel em outro aparelho.
             </p>
           )}
           <Summary data={data} />
           <Books rows={data.books} />
+          <StoreSettings
+            checkout={data.checkout}
+            provider={data.payments.wanted}
+            fromEnv={data.checkoutFromEnv}
+            business={data.business}
+            onSaved={load}
+          />
           <Routing data={data} onSaved={load} />
           <Prices data={data} />
           <section className="mt-16">
@@ -188,6 +213,14 @@ export function AdminDashboard() {
             <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">As chaves ficam só no servidor. O cliente nunca vê esta parte.</p>
             <SettingsForm variant="admin" />
           </section>
+          {data.admin.source === "panel" && (
+            <section className="mt-16">
+              <h2 className="label">Senha do painel</h2>
+              <div className="mt-4">
+                <PasswordForm mode="change" onDone={load} />
+              </div>
+            </section>
+          )}
         </>
       )}
     </main>
@@ -207,8 +240,8 @@ function Summary({ data }: { data: Overview }) {
       <p className="text-[0.9375rem] leading-relaxed text-ink-2">
         {beta ? (
           <>
-            <strong className="font-medium text-ink">Beta:</strong> os clientes confirmam o pedido sem pagar (<code>CHECKOUT_MODE=beta</code>). Os
-            valores abaixo mostram quanto os pedidos teriam rendido.
+            <strong className="font-medium text-ink">Beta:</strong> os clientes confirmam o pedido sem pagar (mude em Vendas, abaixo). Os valores
+            abaixo mostram quanto os pedidos teriam rendido.
           </>
         ) : p.implemented ? (
           <>
@@ -216,8 +249,8 @@ function Summary({ data }: { data: Overview }) {
           </>
         ) : (
           <>
-            <strong className="font-medium text-accent">Pagamentos ligados sem meio de pagamento</strong> (<code>CHECKOUT_MODE=live</code>
-            {p.wanted ? `, ${p.wanted} ainda não implementado` : ", PAYMENT_PROVIDER vazio"}): os clientes veem “Pagamentos em breve”.
+            <strong className="font-medium text-accent">Pagamentos ligados sem meio de pagamento</strong>
+            {p.wanted ? ` (${p.wanted} ainda não está disponível)` : ""}: os clientes veem “Pagamentos em breve”. Mude em Vendas, abaixo.
           </>
         )}
       </p>

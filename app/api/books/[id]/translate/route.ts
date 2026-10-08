@@ -8,7 +8,7 @@ import { findLanguage } from "@/lib/languages";
 import { jobRunner, recountProgress } from "@/services/processing/job-runner";
 import { applySetup } from "@/services/commerce/setup";
 import { routeProvider } from "@/services/commerce/routing";
-import { checkoutMode } from "@/services/commerce/orders";
+import { checkoutConfig } from "@/services/commerce/orders";
 import { PUBLIC_MODE } from "@/lib/mode";
 import { billingMode } from "@/lib/billing/mode";
 import { milliFor, quoteWords } from "@/lib/billing/quote";
@@ -127,7 +127,7 @@ export async function POST(request: Request, { params }: Ctx) {
   } else if (action === "resume" && !parsed.data.providerId && !PUBLIC_MODE) {
     // cliente: continua com o tipo de tradução do livro (ou Padrão); o serviço é escolhido por dentro
     if (meta.status === "done") return fail("Este livro já foi traduzido.", 409);
-    if (checkoutMode() === "live" && meta.order?.status !== "paid") return fail("Confirme o pedido para continuar a tradução.", 402);
+    if ((await checkoutConfig()).mode === "live" && meta.order?.status !== "paid") return fail("Confirme o pedido para continuar a tradução.", 402);
     await store.update(id, (m) => {
       m.level ??= "padrao";
     });
@@ -198,7 +198,7 @@ export async function POST(request: Request, { params }: Ctx) {
       });
     } else {
       // cliente: refaz os trechos que falharam com o mesmo tipo de tradução do pedido
-      if (checkoutMode() === "live" && meta.order?.status !== "paid") return fail("Confirme o pedido para continuar a tradução.", 402);
+      if ((await checkoutConfig()).mode === "live" && meta.order?.status !== "paid") return fail("Confirme o pedido para continuar a tradução.", 402);
       await store.update(id, (m) => {
         m.level ??= "padrao";
       });

@@ -283,6 +283,6 @@ describe("compra de uma tradução", () => {
     });
     expect(applied).toBe(false);
     expect((await store.get(id))!.order!.status).toBe("awaiting_payment");
-    expect(paymentProvider()).toBeNull();
+    expect(paymentProvider(null)).toBeNull();
   });
 });

@@ -4,8 +4,9 @@ import { providerConfigs } from "@/lib/config";
 import { brlPerUsd } from "@/lib/billing/catalog";
 import { billingMode } from "@/lib/billing/mode";
 import { breakdown, OPERATIONS, SERVICE_LEVELS } from "@/lib/billing/pricing";
-import { checkoutMode } from "@/services/commerce/orders";
+import { checkoutConfig } from "@/services/commerce/orders";
 import { paymentSetup } from "@/services/billing/payments";
+import { adminPasswordSource } from "@/services/admin/access";
 import { netFactor } from "@/lib/billing/catalog";
 import { routingFor } from "@/services/commerce/routing";
 import { isFreeProvider, quotaFor } from "@/services/quota/usage";
@@ -15,6 +16,7 @@ import { jobRunner } from "@/services/processing/job-runner";
 export async function GET() {
   await jobRunner.init();
   const settings = await readSettings();
+  const checkout = await checkoutConfig(settings);
   const books = await store.list();
   const fx = brlPerUsd();
 
@@ -88,8 +90,10 @@ export async function GET() {
   );
 
   return json({
-    checkout: checkoutMode(),
-    payments: paymentSetup(),
+    checkout: checkout.mode,
+    checkoutFromEnv: checkout.fromEnv,
+    payments: paymentSetup(checkout.provider),
+    business: settings.business ?? {},
     billing: billingMode(),
     totals: {
       books: rows.length,
@@ -109,7 +113,7 @@ export async function GET() {
     allProviders: configs
       .filter((c) => c.billing !== "none")
       .map((c) => ({ id: c.id, label: c.label, model: c.model, available: c.available, paid: c.paid })),
-    admin: { passwordSet: Boolean(process.env.ADMIN_PASSWORD) },
+    admin: { passwordSet: (await adminPasswordSource()) !== null, source: await adminPasswordSource() },
     offerLiteraria: Boolean(settings.offerLiteraria),
     pricing: {
       minimumBrl: OPERATIONS.minimumBrl,

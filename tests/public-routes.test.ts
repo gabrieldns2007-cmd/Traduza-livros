@@ -15,6 +15,7 @@ const SERVER_ONLY = [
   "/api/admin/auth",
   "/api/admin/overview",
   "/api/admin/settings",
+  "/api/admin/password",
   "/api/payments/webhook/[provider]",
 ];
 

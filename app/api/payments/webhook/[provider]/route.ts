@@ -7,8 +7,9 @@ import { applyPaymentEvent, paymentProvider, PaymentError } from "@/services/bil
  * aviso é aplicado uma única vez (reenvios são ignorados).
  */
 export async function POST(request: Request, { params }: { params: Promise<{ provider: string }> }) {
-  const provider = paymentProvider();
-  if (!provider || provider.id !== (await params).provider) return fail("Não encontrado.", 404);
+  // pelo nome na URL (não pela configuração atual): um aviso atrasado ainda vale se o meio mudou
+  const provider = paymentProvider((await params).provider);
+  if (!provider) return fail("Não encontrado.", 404);
   try {
     const event = await provider.parseWebhook(request);
     const applied = event ? await applyPaymentEvent(event) : false;

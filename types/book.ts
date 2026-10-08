@@ -224,6 +224,8 @@ export interface BookMeta {
   options: TranslationOptions;
   provider?: { id: string; model: string };
   preview?: BookPreview;
+  /** navegador que enviou o livro (serviço sem contas: cookie aleatório); sem dono, só o painel vê */
+  ownerId?: string;
   /** tipo de tradução (o serviço de IA é escolhido por dentro, conforme o tipo) */
   level?: "padrao" | "literaria";
   order?: BookOrder;

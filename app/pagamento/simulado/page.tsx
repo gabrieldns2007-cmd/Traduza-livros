@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { PUBLIC_MODE } from "@/lib/mode";
 import { brl } from "@/lib/money";
 import { openSession } from "@/services/billing/providers/simulated";
+import { checkoutConfig } from "@/services/commerce/orders";
 import { SimulatedActions } from "./simulated-actions";
 
 export const metadata: Metadata = { title: "Pagamento simulado", robots: { index: false } };
@@ -12,7 +13,7 @@ export const metadata: Metadata = { title: "Pagamento simulado", robots: { index
  * (Mercado Pago, Stripe…) para testar a compra sem dinheiro.
  */
 export default async function SimulatedCheckoutPage({ searchParams }: { searchParams: Promise<{ s?: string }> }) {
-  if (PUBLIC_MODE || process.env.PAYMENT_PROVIDER !== "simulado") notFound();
+  if (PUBLIC_MODE || (await checkoutConfig()).provider !== "simulado") notFound();
   const token = (await searchParams).s ?? "";
   const session = await openSession(token);
   return (

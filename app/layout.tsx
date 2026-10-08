@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Newsreader, Instrument_Sans } from "next/font/google";
 import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
 import { PUBLIC_MODE } from "@/lib/mode";
 import { PublicShell } from "@/components/public/public-shell";
 import "./globals.css";
@@ -50,6 +51,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <>
             <SiteHeader />
             {children}
+            <SiteFooter />
           </>
         )}
       </body>

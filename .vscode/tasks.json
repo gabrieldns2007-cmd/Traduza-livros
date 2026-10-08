@@ -4,19 +4,27 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Verso: 1. ver livros salvos",
+      "label": "Verso: 1. atualizar e abrir o site",
       "type": "shell",
-      "command": "npm run status",
+      "command": "npm run atualizar",
+      "isBackground": true,
       "problemMatcher": [],
       "presentation": { "panel": "dedicated", "reveal": "always", "focus": true }
     },
     {
-      "label": "Verso: 2. abrir o site",
+      "label": "Verso: 2. abrir o site (sem atualizar)",
       "type": "shell",
-      "command": "npm install && npm run app",
+      "command": "npm install && npm run dev",
       "isBackground": true,
       "problemMatcher": [],
       "presentation": { "panel": "dedicated", "reveal": "always" }
+    },
+    {
+      "label": "Verso: 3. ver livros salvos",
+      "type": "shell",
+      "command": "npm run status",
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always", "focus": true }
     }
   ]
 }

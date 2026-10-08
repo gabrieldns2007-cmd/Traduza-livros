@@ -12,6 +12,8 @@ export interface PaymentEvent {
   /** id do pagamento no meio de pagamento — chave de idempotência */
   externalId: string;
   amountBrl: number;
+  /** meio de pagamento que avisou (ex.: "simulado", "mercadopago") */
+  provider?: string;
 }
 
 export interface CheckoutRequest {

@@ -64,7 +64,7 @@ export function viewOf(meta: BookMeta): BookView {
  * própria chave e escolhe o serviço, então vê tudo.
  */
 function forCustomer(meta: BookMeta): BookMeta {
-  const { runs: _runs, error: _error, ...rest } = meta;
+  const { runs: _runs, error: _error, ownerId: _owner, ...rest } = meta;
   return {
     ...rest,
     provider: meta.provider?.id === "demo" ? meta.provider : undefined,

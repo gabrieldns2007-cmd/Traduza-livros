@@ -4,10 +4,15 @@ import { store, readSettings } from "@/lib/storage";
 import { findLanguage } from "@/lib/languages";
 import { importBook, ImportError } from "@/services/parsing/import-book";
 import { jobRunner } from "@/services/processing/job-runner";
+import { cookieOf, isOwnerId, OWNER_COOKIE, visibleTo } from "@/services/commerce/ownership";
+import { ADMIN_COOKIE } from "@/lib/auth";
+import { PUBLIC_MODE } from "@/lib/mode";
 
-export async function GET() {
+export async function GET(request: Request) {
   await jobRunner.init();
-  const books = await store.list();
+  const books = PUBLIC_MODE
+    ? await store.list()
+    : await visibleTo(await store.list(), cookieOf(request, OWNER_COOKIE), cookieOf(request, ADMIN_COOKIE));
   return json({ books: books.map(summaryOf) });
 }
 
@@ -39,8 +44,11 @@ export async function POST(request: Request) {
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const meta = await importBook(bytes, { fileName: file.name.slice(0, 200), targetLanguage: target, sourceLanguage: source });
+    const owner = cookieOf(request, OWNER_COOKIE);
     await store.update(meta.id, (m) => {
       m.options = { dialogueStyle: settings.dialogueStyle, deepContext: settings.deepContext, instructions: settings.instructions || undefined };
+      // o livro fica ligado a este navegador (o cookie vem do proxy)
+      if (!PUBLIC_MODE && isOwnerId(owner)) m.ownerId = owner;
     });
     return json({ book: summaryOf((await store.get(meta.id))!) }, 201);
   } catch (err) {

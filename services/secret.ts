@@ -1,6 +1,6 @@
 /**
- * Segredo do servidor para assinar dados de pagamento (sessões do pagamento
- * simulado, por exemplo). Usa PAYMENT_SECRET, se definido; senão, cria um
+ * Segredo do servidor para assinar dados (sessão do painel, sessões do
+ * pagamento simulado). Usa PAYMENT_SECRET, se definido; senão, cria um
  * aleatório na primeira vez e guarda na pasta de dados (nunca vai para o Git).
  */
 import path from "node:path";

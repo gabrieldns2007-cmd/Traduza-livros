@@ -60,10 +60,11 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
     );
     if (!secrets) {
       // cliente: nada sobre serviços, chaves ou sistema
-      const { routing: _r, offerLiteraria: _o, providerId: _p, ...prefs } = publicSettings;
+      const { routing: _r, offerLiteraria: _o, providerId: _p, checkout: _c, ...prefs } = publicSettings;
       void _r;
       void _o;
       void _p;
+      void _c;
       return {
         settings: prefs,
         free: [],
@@ -120,6 +121,13 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
       })
       .optional(),
     offerLiteraria: z.boolean().optional(),
+    checkout: z.object({ mode: z.enum(["beta", "live"]).optional(), provider: z.enum(["simulado", ""]).optional() }).optional(),
+    business: z
+      .object({
+        name: z.string().max(120).optional(),
+        email: z.union([z.literal(""), z.string().max(120).email()]).optional(),
+      })
+      .optional(),
     githubModel: z.string().max(80).optional(),
     groqModel: z.string().max(80).optional(),
   });
@@ -141,6 +149,8 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
     if (secrets) {
       if (b.routing) next.routing = { ...current.routing, ...b.routing };
       if (b.offerLiteraria !== undefined) next.offerLiteraria = b.offerLiteraria;
+      if (b.checkout) next.checkout = { ...current.checkout, ...b.checkout };
+      if (b.business) next.business = { name: b.business.name?.trim() || undefined, email: b.business.email?.trim() || undefined };
     }
     for (const id of secrets ? FREE_PROVIDERS : []) {
       const keyField = FREE_KEY_FIELDS[id];
