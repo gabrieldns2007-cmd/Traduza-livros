@@ -3,6 +3,7 @@
  * Garante que nada é apagado, que a tradução fica pausada com a mensagem
  * certa e que, ao continuar, nenhum trecho já traduzido é enviado de novo.
  */
+import { execFileSync } from "node:child_process";
 import { beforeAll, describe, expect, it } from "vitest";
 import { writeEpub } from "@/services/export/epub-writer";
 import { importBook } from "@/services/parsing/import-book";
@@ -103,6 +104,11 @@ describe("retomada após falta de créditos", () => {
     // traduções gravadas em disco batem com o progresso
     const resume = await recountProgress(bookId);
     expect(resume!.doneChapters).toBe(doneBefore.length);
+
+    // `npm run status` lê o mesmo estado, sem alterar nada
+    const status = execFileSync(process.execPath, ["scripts/book-status.mjs"], { env: process.env, encoding: "utf8" });
+    expect(status).toContain(`capítulos concluídos:  ${doneBefore.length} de ${CHAPTERS}`);
+    expect(status).toContain(`continua do capítulo:  ${resume!.nextChapterIndex! + 1}`);
     const afterRecount = (await store.get(bookId))!;
     expect(afterRecount.progress.translatedWords).toBe(wordsBefore);
 
