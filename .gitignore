@@ -20,3 +20,6 @@ next-env.d.ts
 npm-debug.log*
 /coverage
 /tests/fixtures/out/
+
+# gerado automaticamente pelo `next dev`
+/AGENTS.md
