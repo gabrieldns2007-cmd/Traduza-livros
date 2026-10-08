@@ -6,6 +6,10 @@ import { estimateCost } from "@/lib/cost";
 import type { BookMeta } from "@/types/book";
 import { findLanguage } from "@/lib/languages";
 import { jobRunner, recountProgress } from "@/services/processing/job-runner";
+import { billingMode } from "@/lib/billing/mode";
+import { milliFor, quoteWords } from "@/lib/billing/quote";
+import { CREDIT } from "@/lib/billing/catalog";
+import { availableMilli, wallet, WalletError } from "@/services/billing/wallet";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -15,6 +19,8 @@ const Body = z.object({
   providerId: z.enum(["gemini", "github", "groq", "anthropic", "openai", "demo"]).optional(),
   /** confirmação explícita de que a tradução pode gerar custos */
   confirmCost: z.boolean().optional(),
+  /** créditos insuficientes: traduzir só o que o saldo cobre */
+  partial: z.boolean().optional(),
   targetLanguage: z.string().max(20).optional(),
   sourceLanguage: z.string().max(20).nullable().optional(),
   options: z
@@ -51,6 +57,30 @@ async function chooseProvider(meta: BookMeta, providerId: string | undefined, co
     };
   }
   return { cfg };
+}
+
+/**
+ * Créditos (só com BILLING_MODE=enforce e serviço “hosted”): sem saldo para o
+ * que falta traduzir, responde 402 com quantos créditos são necessários —
+ * a menos que a pessoa tenha escolhido traduzir só o que o saldo cobre.
+ */
+async function checkCredits(meta: BookMeta, cfg: { id: string; model: string; billing: "byok" | "hosted" | "none" }, partial?: boolean) {
+  if (billingMode() !== "enforce" || cfg.billing !== "hosted") return null;
+  const remaining = Math.max(0, meta.totals.words - meta.progress.translatedWords);
+  const quote = quoteWords(cfg, remaining, meta.options.deepContext);
+  const available = availableMilli(await wallet.read());
+  if (available >= quote.milli) return null;
+  if (partial && available >= milliFor(50, quote.quality.per1k)) return null;
+  return json(
+    {
+      error: `Você precisa de ${quote.credits} créditos para traduzir este livro.`,
+      requiresCredits: true,
+      needed: quote.credits,
+      available: Math.floor(available / CREDIT.milli),
+      coverWords: Math.floor((available / CREDIT.milli) * (CREDIT.wordsPerCredit / quote.quality.per1k)),
+    },
+    402,
+  );
 }
 
 type SetupBody = Pick<z.infer<typeof Body>, "targetLanguage" | "sourceLanguage" | "options">;
@@ -107,6 +137,15 @@ export async function POST(request: Request, { params }: Ctx) {
     if (meta.status !== "ready") return fail("A prévia é feita antes de começar a tradução.", 409);
     const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);
     if (chosen.error) return chosen.error;
+    // prévia é grátis para a pessoa, mas tem custo quando usa a chave do Verso: limite diário por plano
+    if (billingMode() === "enforce" && chosen.cfg.billing === "hosted") {
+      try {
+        await wallet.notePreview();
+      } catch (err) {
+        if (err instanceof WalletError) return fail(err.message, 429);
+        throw err;
+      }
+    }
     // refazer a prévia: descarta o trecho anterior (as edições à mão ficam)
     const old = meta.preview;
     if (old) {
@@ -128,19 +167,23 @@ export async function POST(request: Request, { params }: Ctx) {
     if (meta.status !== "ready" && meta.status !== "error" && meta.status !== "paused") return fail("Este livro já está sendo traduzido.", 409);
     const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);
     if (chosen.error) return chosen.error;
+    const noCredits = await checkCredits(meta, chosen.cfg, parsed.data.partial);
+    if (noCredits) return noCredits;
     await applySetup(meta, parsed.data);
     await store.update(id, (m) => {
       m.provider = { id: chosen.cfg.id, model: chosen.cfg.model };
     });
-    await jobRunner.start(id);
+    await jobRunner.start(id, { partial: parsed.data.partial });
   } else if (action === "resume") {
     if (meta.status === "done") return fail("Este livro já foi traduzido.", 409);
     const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);
     if (chosen.error) return chosen.error;
+    const noCredits = await checkCredits(meta, chosen.cfg, parsed.data.partial);
+    if (noCredits) return noCredits;
     await store.update(id, (m) => {
       m.provider = { id: chosen.cfg.id, model: chosen.cfg.model };
     });
-    await jobRunner.start(id);
+    await jobRunner.start(id, { partial: parsed.data.partial });
   } else if (action === "retry-failed") {
     const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);
     if (chosen.error) return chosen.error;

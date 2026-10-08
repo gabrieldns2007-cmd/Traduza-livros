@@ -30,6 +30,8 @@ export interface ProcessorHooks {
   signal: AbortSignal;
   /** o que está acontecendo agora (pedido em andamento, espera de limite) */
   onActivity?: (activity: BookActivity | null) => void;
+  /** antes de cada lote (palavras de origem): pode interromper (ex.: créditos acabaram) */
+  beforeBatch?: (words: number) => Promise<void>;
 }
 
 export function bookContext(meta: BookMeta): BookContext {
@@ -139,6 +141,7 @@ export async function processChapters(meta: BookMeta, chapters: ChapterMeta[], p
 
   for (const batch of makeBatches(items, provider.limits.batchChars)) {
     if (hooks.signal.aborted) throw hooks.signal.reason ?? new Error("aborted");
+    await hooks.beforeBatch?.(batch.reduce((n, it) => n + it.seg.words, 0));
     await translateBatch(bookId, batch, provider, hooks);
     // fecha cada capítulo assim que todos os seus trechos estão gravados
     for (const c of new Set(batch.map((it) => it.chapter))) {
@@ -163,6 +166,7 @@ export async function translateRange(
     .map((seg) => ({ chapter, doc, seg }));
   for (const batch of makeBatches(items, provider.limits.batchChars)) {
     if (hooks.signal.aborted) throw hooks.signal.reason ?? new Error("aborted");
+    await hooks.beforeBatch?.(batch.reduce((n, it) => n + it.seg.words, 0));
     await translateBatch(meta.id, batch, provider, hooks);
   }
 }

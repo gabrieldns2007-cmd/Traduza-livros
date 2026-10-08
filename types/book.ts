@@ -122,6 +122,43 @@ export interface BookProgress {
   measuredWords: number;
 }
 
+/**
+ * Uma execução de tradução (um “começar” ou “continuar”, ou uma prévia):
+ * quem traduziu, quanto consumiu e quanto custou. É a base para calcular a
+ * margem real de cada livro (`npm run custos`).
+ */
+export interface TranslationRun {
+  id: string;
+  kind: "translation" | "preview";
+  provider: string;
+  model: string;
+  /** quem paga o processamento (ver ProviderConfig.billing) */
+  billing: "byok" | "hosted" | "none";
+  startedAt: string;
+  endedAt?: string;
+  /** tempo de processamento (ms) */
+  activeMs: number;
+  requests: number;
+  inputTokens: number;
+  outputTokens: number;
+  /** custo estimado pela tabela de preços (US$); null se o modelo não tem preço conhecido */
+  costUsd: number | null;
+  words: number;
+  segments: number;
+  chapters: number;
+  /** créditos (em milésimos): taxa da qualidade, quanto foi reservado e cobrado */
+  credits: {
+    quality: string;
+    per1k: number;
+    /** o que esta execução valeria em créditos (sempre calculado, mesmo sem cobrança) */
+    valueMilli: number;
+    reservedMilli: number;
+    chargedMilli: number;
+    mode: "off" | "preview" | "enforce";
+  };
+  stopReason?: string;
+}
+
 /** Prévia grátis: um trecho traduzido antes de decidir traduzir o livro todo. */
 export interface BookPreview {
   status: "running" | "done" | "error";
@@ -165,6 +202,8 @@ export interface BookMeta {
   options: TranslationOptions;
   provider?: { id: string; model: string };
   preview?: BookPreview;
+  /** histórico de execuções (custo real por tradução) */
+  runs?: TranslationRun[];
   usage: { inputTokens: number; outputTokens: number };
   /** caminho da imagem de capa dentro do EPUB */
   cover?: string;

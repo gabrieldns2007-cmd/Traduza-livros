@@ -37,7 +37,19 @@ export interface LLMClient {
  * Erro do provedor. `fatal` = não adianta tentar de novo (chave inválida,
  * modelo inexistente, sem créditos). A mensagem é mostrada ao usuário.
  */
-export type ProviderErrorCode = "quota" | "credits" | "auth" | "model" | "rate_limit" | "bad_request" | "network" | "server" | "other";
+export type ProviderErrorCode =
+  | "quota"
+  | "credits"
+  // créditos do Verso acabaram / execução custando mais que o cobrado
+  | "wallet"
+  | "margin"
+  | "auth"
+  | "model"
+  | "rate_limit"
+  | "bad_request"
+  | "network"
+  | "server"
+  | "other";
 
 export class ProviderError extends Error {
   readonly fatal: boolean;

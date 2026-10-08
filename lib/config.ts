@@ -38,6 +38,13 @@ export interface ProviderConfig {
   analysisModel: string;
   /** pode gerar cobrança? (exige confirmação antes de usar) */
   paid: boolean;
+  /**
+   * Quem paga o processamento:
+   *  - "byok": a chave é da própria pessoa (custo zero para o dono do Verso; não consome créditos);
+   *  - "hosted": a chave é do dono do Verso (consome créditos quando BILLING_MODE=enforce);
+   *  - "none": não usa IA (demonstração).
+   */
+  billing: "byok" | "hosted" | "none";
   /** motivo de indisponibilidade (para a tela de configurações) */
   hint?: string;
 }
@@ -100,6 +107,7 @@ export function providerConfigs(s?: ProviderSettings): ProviderConfig[] {
       model: geminiModel,
       analysisModel: geminiModel,
       paid: false,
+      billing: "byok",
       hint: "Adicione sua chave gratuita do Google AI Studio em Ajustes",
     },
     {
@@ -109,6 +117,7 @@ export function providerConfigs(s?: ProviderSettings): ProviderConfig[] {
       model: process.env.GITHUB_MODELS_MODEL || s?.githubModel || GITHUB_MODELS[0].id,
       analysisModel: process.env.GITHUB_MODELS_MODEL || s?.githubModel || GITHUB_MODELS[0].id,
       paid: false,
+      billing: "byok",
       hint: "Adicione um token gratuito do GitHub em Ajustes",
     },
     {
@@ -118,6 +127,7 @@ export function providerConfigs(s?: ProviderSettings): ProviderConfig[] {
       model: process.env.GROQ_MODEL || s?.groqModel || GROQ_MODELS[0].id,
       analysisModel: process.env.GROQ_MODEL || s?.groqModel || GROQ_MODELS[0].id,
       paid: false,
+      billing: "byok",
       hint: "Adicione sua chave gratuita do Groq em Ajustes",
     },
     {
@@ -127,6 +137,7 @@ export function providerConfigs(s?: ProviderSettings): ProviderConfig[] {
       model: anthropicModel,
       analysisModel: process.env.ANTHROPIC_ANALYSIS_MODEL || anthropicModel,
       paid: true,
+      billing: "hosted",
       hint: "Defina ANTHROPIC_API_KEY no arquivo .env.local",
     },
     {
@@ -136,6 +147,7 @@ export function providerConfigs(s?: ProviderSettings): ProviderConfig[] {
       model: openaiModel,
       analysisModel: process.env.OPENAI_ANALYSIS_MODEL || openaiModel,
       paid: true,
+      billing: "hosted",
       hint: "Defina OPENAI_API_KEY e OPENAI_MODEL (e OPENAI_BASE_URL para provedores compatíveis)",
     },
     {
@@ -146,6 +158,7 @@ export function providerConfigs(s?: ProviderSettings): ProviderConfig[] {
       model: "demo",
       analysisModel: "demo",
       paid: false,
+      billing: "none",
       hint: "Copia o texto original — útil para testar o fluxo sem chave de API",
     },
   ];
@@ -160,4 +173,9 @@ export function defaultProviderId(s?: ProviderSettings & { providerId?: string }
   const preferred = all.find((p) => p.id === s?.providerId && p.available && !p.paid);
   if (preferred) return preferred.id;
   return all.find((p) => (FREE_PROVIDERS as readonly string[]).includes(p.id) && p.available)?.id ?? "demo";
+}
+
+/** Quem paga o processamento de um serviço ("byok" quando desconhecido: nunca cobra por engano). */
+export function billingOf(id: string, s?: ProviderSettings): ProviderConfig["billing"] {
+  return providerConfigs(s).find((p) => p.id === id)?.billing ?? "byok";
 }

@@ -10,7 +10,10 @@
  */
 import type { BookActivity, BookMeta } from "@/types/book";
 import { store, readSettings } from "@/lib/storage";
-import { defaultProviderId, FREE_PROVIDERS } from "@/lib/config";
+import { billingOf, defaultProviderId, FREE_PROVIDERS } from "@/lib/config";
+import { billingMode } from "@/lib/billing/mode";
+import { activeRunIds, BillingStop, RunLedger } from "@/services/billing/run-ledger";
+import { wallet } from "@/services/billing/wallet";
 import { toPlainText } from "@/lib/markup";
 import { mergeCandidates } from "@/services/glossary/glossary";
 import { createProvider, type TranslationProvider } from "@/services/translation";
@@ -32,6 +35,8 @@ class JobRunner {
   private activities = new Map<string, BookActivity>();
   /** prévias em andamento (podem ser canceladas ao excluir o livro) */
   private previews = new Map<string, AbortController>();
+  /** livros cuja próxima execução pode usar só o saldo disponível (tradução parcial) */
+  private partial = new Set<string>();
   /** fábrica do provedor (substituível em testes) */
   providerFactory: (id: string, settings?: Awaited<ReturnType<typeof readSettings>>) => TranslationProvider = createProvider;
 
@@ -40,6 +45,7 @@ class JobRunner {
     if (this.initialized) return;
     this.initialized = true;
     const books = await store.list();
+    if (billingMode() === "enforce") await wallet.releaseStale(activeRunIds()).catch(() => {});
     // prévia interrompida por reinício do servidor: pode ser pedida de novo
     for (const b of books.filter((x) => x.preview?.status === "running")) {
       await store.update(b.id, (m) => {
@@ -83,8 +89,10 @@ class JobRunner {
     return this.queue.indexOf(bookId);
   }
 
-  async start(bookId: string) {
+  async start(bookId: string, opts: { partial?: boolean } = {}) {
     await this.init();
+    if (opts.partial) this.partial.add(bookId);
+    else this.partial.delete(bookId);
     await store.update(bookId, (m) => {
       m.status = "queued";
       m.error = undefined;
@@ -145,7 +153,13 @@ class JobRunner {
 
     const controller = new AbortController();
     this.previews.set(bookId, controller);
+    const ledger = await RunLedger.open((await store.get(bookId))!, "preview", {
+      id: provider.id,
+      model: provider.model,
+      billing: billingOf(provider.id, settings),
+    });
     void (async () => {
+      let reason = "preview";
       try {
         await translateRange(meta, chapter, chapter.start, end, provider, {
           signal: controller.signal,
@@ -160,8 +174,10 @@ class JobRunner {
               },
               { persist: false },
             );
+            await ledger.usage(usage);
           },
           onProgress: async (chapterId, delta) => {
+            await ledger.progress(delta);
             await store.update(bookId, (m) => {
               const c = m.chapters.find((x) => x.id === chapterId)!;
               c.translatedWords += delta.words;
@@ -180,6 +196,7 @@ class JobRunner {
           if (m.preview) m.preview.status = "done";
         });
       } catch (err) {
+        reason = err instanceof ProviderError ? err.code : "error";
         if (!(await store.get(bookId))) return; // livro excluído
         const message = err instanceof ProviderError ? err.message : "Não foi possível fazer a prévia agora. Tente de novo.";
         console.warn(`[runner] prévia do livro ${bookId} falhou`, err);
@@ -189,6 +206,7 @@ class JobRunner {
       } finally {
         this.previews.delete(bookId);
         this.activities.delete(bookId);
+        await ledger.close(reason).catch(() => {});
       }
     })();
   }
@@ -266,6 +284,33 @@ class JobRunner {
       m.progress.startedAt ??= new Date().toISOString();
     });
 
+    // registro da execução (custo real) e, em modo enforce com chave do Verso, reserva de créditos
+    const doneAtStart = (await store.get(bookId))!.chapters.filter((c) => c.status === "done").length;
+    let ledger: RunLedger;
+    try {
+      ledger = await RunLedger.open(
+        (await store.get(bookId))!,
+        "translation",
+        {
+          id: provider.id,
+          model: provider.model,
+          billing: billingOf(provider.id, settings),
+        },
+        { partial: this.partial.has(bookId) },
+      );
+    } catch (err) {
+      if (!(err instanceof BillingStop)) throw err;
+      await store.update(bookId, (m) => {
+        m.status = "paused";
+        m.phase = "Pausado";
+        m.error = err.message;
+        m.stopCode = err.code;
+        m.activeChapterIds = [];
+      });
+      return;
+    }
+    let stopReason = "done";
+
     // medição de ritmo para estimar o tempo restante
     const runStart = Date.now();
     const base = (await store.get(bookId))!;
@@ -291,7 +336,9 @@ class JobRunner {
           },
           { persist: false },
         );
+        await ledger.usage(usage);
       },
+      beforeBatch: (words: number) => ledger.beforeBatch(words),
       onProgress: async (chapterId: string, delta: { words: number; segments: number; failed: number }) => {
         await store.update(bookId, (m) => {
           const c = m.chapters.find((x) => x.id === chapterId)!;
@@ -303,6 +350,7 @@ class JobRunner {
           m.progress.activeMs = baseActive + (Date.now() - runStart);
           m.progress.measuredWords = baseMeasured + (m.progress.translatedWords - wordsAtStart);
         });
+        await ledger.progress(delta);
       },
       onChapterSaved: (chapterId: string) => this.finishChapter(bookId, chapterId, provider),
       onActivity: (a: BookActivity | null) => {
@@ -312,7 +360,7 @@ class JobRunner {
     };
 
     try {
-      if (!base.profile) await this.analyzeBook(bookId, provider, signal);
+      if (!base.profile) await this.analyzeBook(bookId, provider, signal, ledger);
 
       await store.update(bookId, (m) => {
         m.status = "translating";
@@ -382,6 +430,7 @@ class JobRunner {
       });
       await store.clearExports(bookId);
     } catch (err) {
+      stopReason = signal.aborted ? "paused" : err instanceof ProviderError ? err.code : "error";
       if (signal.aborted) {
         // pausa ou exclusão: pause()/stop() já ajustaram o estado
         if (await store.get(bookId)) {
@@ -411,13 +460,17 @@ class JobRunner {
       });
     } finally {
       this.activities.delete(bookId);
+      this.partial.delete(bookId);
       signal.removeEventListener("abort", forward);
-      if (await store.get(bookId)) await store.flush(bookId);
+      const latest = await store.get(bookId);
+      const doneNow = latest?.chapters.filter((c) => c.status === "done").length ?? doneAtStart;
+      await ledger.close(stopReason, Math.max(0, doneNow - doneAtStart)).catch((e) => console.warn("[runner] falha ao fechar registro", e));
+      if (latest) await store.flush(bookId);
     }
   }
 
   /** Conhece o livro: perfil literário, glossário inicial, título e sumário traduzidos. */
-  private async analyzeBook(bookId: string, provider: TranslationProvider, signal: AbortSignal) {
+  private async analyzeBook(bookId: string, provider: TranslationProvider, signal: AbortSignal, ledger?: RunLedger) {
     await store.update(bookId, (m) => {
       m.status = "analyzing";
       m.phase = "Conhecendo o livro";
@@ -471,6 +524,7 @@ class JobRunner {
         m.usage.outputTokens += analysis.usage.outputTokens;
       }
     });
+    if ("usage" in analysis && analysis.usage) await ledger?.usage(analysis.usage);
   }
 
   private async finishChapter(bookId: string, chapterId: string, provider?: TranslationProvider) {
