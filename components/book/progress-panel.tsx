@@ -6,6 +6,7 @@ import { chapterLabel, formatDuration, formatNumber } from "@/lib/format";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { Button } from "@/components/ui/button";
 import { ProviderPicker, type ProviderChoice } from "./provider-picker";
+import { PUBLIC_MODE } from "@/lib/mode";
 
 /** [102, 103, 104, 110, 111] → ["102 a 104", "110", "111"] */
 function ranges(nums: number[]): string[] {
@@ -220,7 +221,13 @@ export function ProgressPanel({
             {book.chapters[book.resumeIndex].translatedSegments > 0 ? " (a partir do trecho onde parou)" : ""} — nada será traduzido de novo.
           </p>
         )}
-        {running && <p className="text-[0.8125rem] text-muted">Pode fechar esta página — a tradução continua no servidor.</p>}
+        {running && (
+          <p className="text-[0.8125rem] text-muted">
+            {PUBLIC_MODE
+              ? "Deixe o Verso aberto enquanto traduz. Se fechar, a tradução continua de onde parou quando você voltar."
+              : "Pode fechar esta página — a tradução continua no servidor."}
+          </p>
+        )}
       </div>
       {error && (
         <p className="mt-3 text-[0.875rem] text-accent" role="alert">

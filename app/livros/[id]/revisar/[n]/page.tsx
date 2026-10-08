@@ -6,17 +6,21 @@ import { store } from "@/lib/storage";
 import { reviewChapter } from "@/lib/review";
 import { isActive } from "@/lib/format";
 import { Reader } from "@/components/review/reader";
+import { PUBLIC_MODE } from "@/lib/mode";
+import { PublicReview } from "@/components/public/loaders";
 
 type Props = { params: Promise<{ id: string; n: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  if (PUBLIC_MODE) return { title: "Revisar" };
   const meta = await loadBook((await params).id);
   return { title: meta ? `Revisar · ${meta.translatedTitle || meta.title}` : "Revisar" };
 }
 
 export default async function ReviewPage({ params }: Props) {
-  await connection();
   const { id, n } = await params;
+  if (PUBLIC_MODE) return <PublicReview id={id} n={n} />;
+  await connection();
   const meta = await loadBook(id);
   if (!meta) notFound();
   const index = Number(n) - 1;

@@ -8,7 +8,7 @@
  * é mantida do primeiro ao último capítulo. Entradas editadas pelo usuário
  * nunca são sobrescritas.
  */
-import { randomUUID } from "node:crypto";
+import { randomId as randomUUID } from "@/utils/id";
 import type { GlossaryEntry } from "@/types/book";
 import type { GlossaryCandidate } from "@/services/translation/translation-provider";
 

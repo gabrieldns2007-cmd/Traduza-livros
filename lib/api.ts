@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
 import type { BookActivity, BookMeta, BookSummary } from "@/types/book";
 import { store, isValidBookId } from "@/lib/storage";
 import { jobRunner } from "@/services/processing/job-runner";
 
 export function json(data: unknown, status = 200) {
-  return NextResponse.json(data, { status, headers: { "cache-control": "no-store" } });
+  // Response.json (padrão da web): o mesmo código responde no servidor e no navegador
+  return Response.json(data, { status, headers: { "cache-control": "no-store" } });
 }
 
 export function fail(message: string, status = 400) {

@@ -8,6 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Check } from "@/components/ui/icons";
 import { FreeServiceCard, type FreeService } from "./free-service-card";
+import { PUBLIC_MODE } from "@/lib/mode";
 
 interface Payload {
   settings: {
@@ -67,7 +68,7 @@ export function SettingsForm() {
     <div className="rise mt-10 sm:mt-14">
       <Section
         title="Créditos grátis de hoje"
-        note="Serviços de IA gratuitos, sem cartão. Cada um tem a própria cota diária: quando a de um acaba, você pode continuar com outro. As chaves ficam só no servidor."
+        note={`Serviços de IA gratuitos, sem cartão. Cada um tem a própria cota diária: quando a de um acaba, você pode continuar com outro. ${PUBLIC_MODE ? "As chaves ficam só neste navegador." : "As chaves ficam só no servidor."}`}
       >
         <div className="space-y-3">
           {data.free.map((s) => (
@@ -162,30 +163,39 @@ export function SettingsForm() {
         {status === "error" && <span className="text-[0.875rem] text-accent">Não foi possível salvar.</span>}
       </div>
 
-      <Section title="Privacidade e arquivos">
-        <p className="text-[0.9375rem] leading-relaxed text-ink-2">
-          Seus livros ficam no servidor onde o Verso está rodando, na pasta{" "}
-          <code className="rounded bg-paper-2 px-1.5 py-0.5 text-[0.8125rem]">{data.dataDir}</code>. O texto é enviado ao provedor de IA somente para
-          ser traduzido. Não há contas nem rastreamento.
-        </p>
-        <p className="mt-3 text-[0.9375rem] leading-relaxed text-ink-2">
-          {data.authEnabled
-            ? "O acesso está protegido por senha (APP_PASSWORD)."
-            : "O acesso não tem senha. Se for usar fora da sua rede, defina APP_PASSWORD."}{" "}
-          Limite de envio: {data.maxUploadMb} MB por arquivo.
-        </p>
-        {data.authEnabled && (
-          <button
-            onClick={async () => {
-              await api("/api/auth", { method: "DELETE" });
-              window.location.href = "/entrar";
-            }}
-            className="link mt-4 text-[0.875rem] text-muted hover:text-ink"
-          >
-            Sair deste aparelho
-          </button>
-        )}
-      </Section>
+      {PUBLIC_MODE ? (
+        <Section title="Privacidade e arquivos">
+          <p className="text-[0.9375rem] leading-relaxed text-ink-2">
+            Seus livros, traduções e chaves ficam guardados só neste navegador. O texto vai direto do seu aparelho para o serviço de IA escolhido,
+            somente para ser traduzido. Limite de envio: {data.maxUploadMb} MB por arquivo.
+          </p>
+        </Section>
+      ) : (
+        <Section title="Privacidade e arquivos">
+          <p className="text-[0.9375rem] leading-relaxed text-ink-2">
+            Seus livros ficam no servidor onde o Verso está rodando, na pasta{" "}
+            <code className="rounded bg-paper-2 px-1.5 py-0.5 text-[0.8125rem]">{data.dataDir}</code>. O texto é enviado ao provedor de IA somente
+            para ser traduzido. Não há contas nem rastreamento.
+          </p>
+          <p className="mt-3 text-[0.9375rem] leading-relaxed text-ink-2">
+            {data.authEnabled
+              ? "O acesso está protegido por senha (APP_PASSWORD)."
+              : "O acesso não tem senha. Se for usar fora da sua rede, defina APP_PASSWORD."}{" "}
+            Limite de envio: {data.maxUploadMb} MB por arquivo.
+          </p>
+          {data.authEnabled && (
+            <button
+              onClick={async () => {
+                await api("/api/auth", { method: "DELETE" });
+                window.location.href = "/entrar";
+              }}
+              className="link mt-4 text-[0.875rem] text-muted hover:text-ink"
+            >
+              Sair deste aparelho
+            </button>
+          )}
+        </Section>
+      )}
 
       <Section title="Kindle">
         <p className="text-[0.9375rem] leading-relaxed text-ink-2">

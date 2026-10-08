@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends fonts-dejavu-co
     && mkdir -p /data && chown node:node /data
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
+COPY --from=build --chown=node:node /app/public ./public
 USER node
 VOLUME /data
 EXPOSE 3000

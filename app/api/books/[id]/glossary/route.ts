@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { randomUUID } from "node:crypto";
+import { randomId as randomUUID } from "@/utils/id";
 import { fail, json, loadBook } from "@/lib/api";
 import { store } from "@/lib/storage";
 import { normalizeTerm } from "@/services/glossary/glossary";

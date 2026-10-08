@@ -6,7 +6,7 @@
  * capítulo arejadas, cabeçalhos correntes, numeração de páginas e sumário
  * com números de página. Usa o mesmo conteúdo da exportação EPUB.
  */
-import fs from "node:fs";
+import { promises as fs } from "node:fs";
 import path from "node:path";
 import PDFDocument from "pdfkit";
 import * as fontkit from "fontkit";
@@ -41,14 +41,17 @@ interface FontSet {
   medium: string;
 }
 
+type FontBytes = Record<"regular" | "italic" | "bold" | "boldItalic" | "medium", Uint8Array>;
+
+/** Fontes embutidas (public/pdf-fonts): lidas do disco no servidor e do próprio site no navegador. */
 function fontsDir() {
-  return path.join(process.cwd(), "assets", "fonts");
+  return typeof window === "undefined" ? path.join(process.cwd(), "public", "pdf-fonts") : "/__public/pdf-fonts";
 }
 
 function candidateFontSets(): FontSet[] {
   const d = fontsDir();
   const sets: FontSet[] = [];
-  if (process.env.PDF_FONT_REGULAR) {
+  if (typeof window === "undefined" && process.env.PDF_FONT_REGULAR) {
     const r = process.env.PDF_FONT_REGULAR;
     sets.push({
       name: "custom",
@@ -67,27 +70,53 @@ function candidateFontSets(): FontSet[] {
     boldItalic: path.join(d, "Newsreader-600-italic.ttf"),
     medium: path.join(d, "Newsreader-500-normal.ttf"),
   });
-  const dv = "/usr/share/fonts/truetype/dejavu";
-  sets.push({
-    name: "DejaVu Serif",
-    regular: `${dv}/DejaVuSerif.ttf`,
-    italic: fs.existsSync(`${dv}/DejaVuSerif-Italic.ttf`) ? `${dv}/DejaVuSerif-Italic.ttf` : `${dv}/DejaVuSerif.ttf`,
-    bold: `${dv}/DejaVuSerif-Bold.ttf`,
-    boldItalic: fs.existsSync(`${dv}/DejaVuSerif-BoldItalic.ttf`) ? `${dv}/DejaVuSerif-BoldItalic.ttf` : `${dv}/DejaVuSerif-Bold.ttf`,
-    medium: `${dv}/DejaVuSerif-Bold.ttf`,
-  });
-  return sets.filter((s) => [s.regular, s.italic, s.bold, s.boldItalic, s.medium].every((p) => fs.existsSync(p)));
+  if (typeof window === "undefined") {
+    const dv = "/usr/share/fonts/truetype/dejavu";
+    sets.push({
+      name: "DejaVu Serif",
+      regular: `${dv}/DejaVuSerif.ttf`,
+      italic: `${dv}/DejaVuSerif-Italic.ttf`,
+      bold: `${dv}/DejaVuSerif-Bold.ttf`,
+      boldItalic: `${dv}/DejaVuSerif-BoldItalic.ttf`,
+      medium: `${dv}/DejaVuSerif-Bold.ttf`,
+    });
+  }
+  return sets;
+}
+
+async function readBytes(p: string): Promise<Uint8Array | null> {
+  try {
+    return new Uint8Array(await fs.readFile(p));
+  } catch {
+    return null;
+  }
+}
+
+/** Carrega uma família inteira; variantes que faltam caem na regular (ou na negrita). */
+async function loadSet(set: FontSet): Promise<FontBytes | null> {
+  const regular = await readBytes(set.regular);
+  if (!regular) return null;
+  const bold = (await readBytes(set.bold)) ?? regular;
+  return {
+    regular,
+    italic: (await readBytes(set.italic)) ?? regular,
+    bold,
+    boldItalic: (await readBytes(set.boldItalic)) ?? bold,
+    medium: (await readBytes(set.medium)) ?? bold,
+  };
 }
 
 /** Escolhe a primeira família que cobre as letras do livro. */
-function chooseFonts(sampleText: string): FontSet {
+async function chooseFonts(sampleText: string): Promise<FontBytes> {
   const letters = new Set<number>();
   for (const ch of sampleText) if (/\p{L}/u.test(ch)) letters.add(ch.codePointAt(0)!);
-  let best: { set: FontSet; missing: number } | null = null;
-  for (const set of candidateFontSets()) {
+  let best: { set: FontBytes; missing: number } | null = null;
+  for (const candidate of candidateFontSets()) {
+    const set = await loadSet(candidate);
+    if (!set) continue;
     let missing = 0;
     try {
-      const font = fontkit.openSync(set.regular) as unknown as { hasGlyphForCodePoint(cp: number): boolean };
+      const font = fontkit.create(set.regular as never) as unknown as { hasGlyphForCodePoint(cp: number): boolean };
       for (const cp of letters) if (!font.hasGlyphForCodePoint(cp)) missing++;
     } catch {
       continue;
@@ -179,10 +208,14 @@ export async function buildTranslatedPdf(meta: BookMeta): Promise<Uint8Array> {
     const segs = docs.get(c.docId)!.segments.slice(c.start, c.end);
     for (const s of segs.slice(0, 400)) sample.push(toPlainText(s.out ?? s.src));
   }
-  const fonts = chooseFonts(sample.join(" "));
+  const fonts = await chooseFonts(sample.join(" "));
   const hyphenate = await getHyphenator(meta.targetLanguage);
 
+  // pdfkit aceita os bytes da fonte (Buffer no Node, ArrayBuffer/Uint8Array no navegador)
+  const font = (b: Uint8Array) => (typeof window === "undefined" ? Buffer.from(b) : b) as never;
   const pdf = new PDFDocument({
+    // fonte padrão do documento: no navegador as fontes-padrão do PDF (Helvetica…) não vêm embutidas
+    font: font(fonts.regular),
     size: PAGE,
     margins: M,
     bufferPages: true,
@@ -198,17 +231,16 @@ export async function buildTranslatedPdf(meta: BookMeta): Promise<Uint8Array> {
       Subject: `Tradução para ${languageLabel(meta.targetLanguage)}`,
     },
   });
-  pdf.registerFont("serif", fonts.regular);
-  pdf.registerFont("serif-italic", fonts.italic);
-  pdf.registerFont("serif-bold", fonts.bold);
-  pdf.registerFont("serif-bolditalic", fonts.boldItalic);
-  pdf.registerFont("serif-medium", fonts.medium);
-  const sansPath = path.join(fontsDir(), "InstrumentSans-500.ttf");
-  pdf.registerFont("sans", fs.existsSync(sansPath) ? sansPath : fonts.regular);
+  pdf.registerFont("serif", font(fonts.regular));
+  pdf.registerFont("serif-italic", font(fonts.italic));
+  pdf.registerFont("serif-bold", font(fonts.bold));
+  pdf.registerFont("serif-bolditalic", font(fonts.boldItalic));
+  pdf.registerFont("serif-medium", font(fonts.medium));
+  pdf.registerFont("sans", font((await readBytes(path.join(fontsDir(), "InstrumentSans-500.ttf"))) ?? fonts.regular));
 
   const typesetter = new Typesetter(pdf);
-  const chunks: Buffer[] = [];
-  pdf.on("data", (c: Buffer) => chunks.push(c));
+  const chunks: Uint8Array[] = [];
+  pdf.on("data", (c: Uint8Array) => chunks.push(c));
   const finished = new Promise<void>((resolve, reject) => {
     pdf.on("end", () => resolve());
     pdf.on("error", reject);
@@ -232,11 +264,13 @@ export async function buildTranslatedPdf(meta: BookMeta): Promise<Uint8Array> {
   } catch {
     zip = null;
   }
+  // Buffer no Node; no navegador o pdfkit aceita Uint8Array (o tipo é só para o TypeScript)
   const readImage = async (p: string): Promise<Buffer | null> => {
     if (!zip) return null;
     const f = findZipFile(zip, p);
     if (!f) return null;
-    const buf = Buffer.from(await f.async("uint8array"));
+    const raw = await f.async("uint8array");
+    const buf = typeof window === "undefined" ? Buffer.from(raw) : (raw as unknown as Buffer);
     const isJpeg = buf[0] === 0xff && buf[1] === 0xd8;
     const isPng = buf[0] === 0x89 && buf[1] === 0x50;
     return isJpeg || isPng ? buf : null;
@@ -474,9 +508,19 @@ export async function buildTranslatedPdf(meta: BookMeta): Promise<Uint8Array> {
 
   pdf.end();
   await finished;
-  return new Uint8Array(Buffer.concat(chunks));
+  return concatBytes(chunks);
 }
 
 function truncateTo(s: string, n: number) {
   return s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s;
+}
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+  const out = new Uint8Array(chunks.reduce((n, c) => n + c.byteLength, 0));
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.byteLength;
+  }
+  return out;
 }

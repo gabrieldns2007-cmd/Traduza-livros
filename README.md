@@ -171,6 +171,28 @@ Antes de traduzir o livro todo, **Ver prévia grátis** traduz só um trecho do 
 
 **Regras de custo:** o Verso nunca liga billing, nunca troca de provedor sozinho e nunca usa um provedor pago sem você escolher e confirmar (“Esta tradução pode gerar custos”, com estimativa). Traduções com provedor pago não recomeçam sozinhas depois de reiniciar o servidor.
 
+## Versão pública (qualquer pessoa, de graça)
+
+Com `NEXT_PUBLIC_VERSO_MODE=public`, o Verso vira um site aberto: cada pessoa entra com o **Google**, cola a **própria chave gratuita** (Gemini, Groq ou GitHub Models) e os livros ficam **no navegador dela** (IndexedDB). O servidor só entrega as páginas — não guarda livros nem chaves e não gasta a cota de ninguém.
+
+Como funciona por dentro:
+
+- O mesmo código das rotas `app/api` roda no navegador. `public/verso-sw.js` (service worker) encaminha cada pedido `/api/…` para a aba aberta, que responde com `lib/browser/backend.ts`.
+- `lib/browser/fs.ts` imita `node:fs` sobre o IndexedDB e `next.config.ts` (`turbopack.resolveAlias`, condição `browser`) troca os módulos do Node — por isso armazenamento, retomada, prévia, glossário e exportação EPUB/PDF são os mesmos do servidor.
+- Só uma aba por vez traduz (Web Locks); as outras usam a dela. Se a página for fechada, a tradução continua de onde parou quando a pessoa volta.
+- Gemini e Groq são chamados direto do navegador; o GitHub Models passa por `/api/relay/github`, um repasse sem estado (a chave vem a cada pedido e não é guardada).
+- Login: botão “Continuar com o Google” (Google Identity Services). Só precisa do **Client ID** público; não há segredo no servidor. A conta separa os livros de cada pessoa no mesmo aparelho; “Minha conta” mostra os créditos grátis do dia, os livros e permite sair ou apagar os dados do aparelho.
+
+### Publicar no Vercel (gratuito, sem cartão)
+
+1. Entre em [vercel.com](https://vercel.com) com a conta do GitHub (plano **Hobby**, gratuito, uso não comercial).
+2. **Add New → Project** → importe este repositório.
+3. Em **Environment Variables**, adicione `NEXT_PUBLIC_VERSO_MODE` = `public` e toque em **Deploy**. Anote o endereço gerado (ex.: `https://verso-xxxx.vercel.app`).
+4. No [Google Cloud Console](https://console.cloud.google.com/), crie um projeto (gratuito, sem cartão) → **Google Auth Platform**: preencha a marca (nome “Verso”, e-mail), público **Externo** e **publique o app**. Em **Clientes → Criar cliente**, escolha **Aplicativo da Web** e em **Origens JavaScript autorizadas** cole o endereço do passo 3. Copie o **Client ID**.
+5. De volta ao Vercel: **Settings → Environment Variables** → `NEXT_PUBLIC_GOOGLE_CLIENT_ID` = Client ID → **Deployments → Redeploy**.
+
+Para testar sem Google (só em desenvolvimento), `NEXT_PUBLIC_VERSO_TEST_LOGIN=1` mostra “Entrar como visitante (teste)” e o serviço de demonstração.
+
 ## Rodando no GitHub Codespaces
 
 `npm run dev` compila cada página na primeira vez que ela é aberta, o que pode demorar. Para uso diário, rode `npm run app` (prepara uma versão rápida e inicia). Depois abra a aba **Ports** → porta **3000** → ícone de globo.

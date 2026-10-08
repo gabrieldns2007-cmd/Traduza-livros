@@ -3,10 +3,11 @@ import { readSettings } from "@/lib/storage";
 import { config } from "@/lib/config";
 import { defaultProviderId } from "@/lib/config";
 import { TranslateFlow } from "@/components/home/translate-flow";
+import { PUBLIC_MODE } from "@/lib/mode";
+import { PublicHomeFlow } from "@/components/public/loaders";
 
 export default async function HomePage() {
-  await connection();
-  const settings = await readSettings();
+  const settings = PUBLIC_MODE ? null : (await connection(), await readSettings());
 
   return (
     <main className="mx-auto w-full max-w-[42rem] px-5 pt-10 pb-24 sm:px-8 sm:pt-20">
@@ -20,16 +21,20 @@ export default async function HomePage() {
       </section>
 
       <section className="rise mt-10 sm:mt-14" style={{ animationDelay: "80ms" }}>
-        <TranslateFlow
-          defaults={{
-            targetLanguage: settings.targetLanguage,
-            dialogueStyle: settings.dialogueStyle,
-            deepContext: settings.deepContext,
-            instructions: settings.instructions,
-            maxUploadMb: Math.round(config.maxUploadBytes / 1024 / 1024),
-            demo: defaultProviderId(settings) === "demo",
-          }}
-        />
+        {settings ? (
+          <TranslateFlow
+            defaults={{
+              targetLanguage: settings.targetLanguage,
+              dialogueStyle: settings.dialogueStyle,
+              deepContext: settings.deepContext,
+              instructions: settings.instructions,
+              maxUploadMb: Math.round(config.maxUploadBytes / 1024 / 1024),
+              demo: defaultProviderId(settings) === "demo",
+            }}
+          />
+        ) : (
+          <PublicHomeFlow />
+        )}
       </section>
 
       <section className="mt-20 grid gap-8 border-t border-rule pt-10 sm:grid-cols-3 sm:gap-6">

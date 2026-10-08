@@ -5,6 +5,7 @@ import { DemoTranslationProvider } from "./demo-provider";
 import { AnthropicClient } from "./llm/anthropic";
 import { GeminiClient } from "./llm/gemini";
 import { FreeOpenAIClient } from "./llm/free-openai";
+import { freeServiceBase } from "@/lib/mode";
 import { OpenAICompatibleClient } from "./llm/openai-compatible";
 import { ProviderError, type Effort, type LLMClient, type LLMRequest } from "./llm/types";
 import { isFreeProvider, recordExhausted, recordRequest } from "@/services/quota/usage";
@@ -37,7 +38,7 @@ export function createProvider(id: string, settings?: ProviderSettings): Transla
         counted(
           new FreeOpenAIClient("github", cfg.model, githubToken(settings), {
             label: "GitHub Models",
-            baseUrl: "https://models.github.ai/inference",
+            baseUrl: freeServiceBase("github"),
             maxOutputTokens: 4000,
             headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
           }),
@@ -50,7 +51,7 @@ export function createProvider(id: string, settings?: ProviderSettings): Transla
         counted(
           new FreeOpenAIClient("groq", cfg.model, groqApiKey(settings), {
             label: "Groq",
-            baseUrl: "https://api.groq.com/openai/v1",
+            baseUrl: freeServiceBase("groq"),
             maxOutputTokens: 4000,
             dailyRequestHeaders: true,
           }),

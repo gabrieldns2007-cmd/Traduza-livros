@@ -4,7 +4,7 @@
  * simples, que depois segue exatamente o mesmo fluxo de um EPUB enviado.
  */
 import JSZip from "jszip";
-import { randomUUID } from "node:crypto";
+import { randomId as randomUUID } from "@/utils/id";
 import { escapeXmlAttr, escapeXmlText } from "@/utils/xml";
 
 export interface WriterChapter {

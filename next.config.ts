@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["pdfkit", "unpdf", "jszip", "cheerio"],
   // Os arquivos de fonte usados pelo gerador de PDF precisam ir junto no build standalone.
   outputFileTracingIncludes: {
-    "/api/books/[id]/export/[format]": ["./assets/fonts/**/*"],
+    "/api/books/[id]/export/[format]": ["./public/pdf-fonts/**/*"],
   },
   // nunca empacotar os livros do usuário no build
   outputFileTracingExcludes: {
@@ -21,6 +21,15 @@ const nextConfig: NextConfig = {
   // economiza memória (máquinas pequenas, como o Codespace básico, podiam encerrar o build).
   typescript: { ignoreBuildErrors: true },
   poweredByHeader: false,
+  turbopack: {
+    // Versão pública: o mesmo motor roda no navegador, com os módulos do Node
+    // trocados por equivalentes (arquivos no IndexedDB, caminhos, ids).
+    resolveAlias: {
+      "node:fs": { browser: "./lib/browser/fs.ts" },
+      "node:path": { browser: "path-browserify" },
+      "node:path/posix": { browser: "path-browserify" },
+    },
+  },
 };
 
 export default nextConfig;

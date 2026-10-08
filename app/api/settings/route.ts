@@ -17,6 +17,7 @@ import { authEnabled } from "@/lib/auth";
 import { readSettings, writeSettings, type Settings } from "@/lib/storage";
 import { findLanguage } from "@/lib/languages";
 import { quotaFor } from "@/services/quota/usage";
+import { freeServiceBase } from "@/lib/mode";
 
 const ENV_KEYS: Record<FreeProviderId, string[]> = {
   gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
@@ -140,7 +141,7 @@ export async function POST(request: Request) {
       });
     }
     if (service === "groq") {
-      const res = await fetch("https://api.groq.com/openai/v1/models", { headers: { authorization: `Bearer ${key}` } });
+      const res = await fetch(`${freeServiceBase("groq")}/models`, { headers: { authorization: `Bearer ${key}` } });
       if (!res.ok) return json({ ok: false, message: res.status === 401 ? "A chave foi recusada pelo Groq." : `O Groq respondeu ${res.status}.` });
       const data = (await res.json()) as { data?: { id: string }[] };
       const ids = new Set((data.data ?? []).map((m) => m.id));
@@ -149,7 +150,7 @@ export async function POST(request: Request) {
         message: ids.has(cfg.model) ? undefined : `A chave funciona, mas o modelo ${cfg.model} não está disponível. Escolha outro.`,
       });
     }
-    const res = await fetch("https://models.github.ai/inference/chat/completions", {
+    const res = await fetch(`${freeServiceBase("github")}/chat/completions`, {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${key}`, accept: "application/vnd.github+json" },
       body: JSON.stringify({ model: cfg.model, max_tokens: 1, messages: [{ role: "user", content: "ok" }] }),

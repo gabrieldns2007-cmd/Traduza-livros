@@ -13,6 +13,7 @@ import { ProgressBar } from "@/components/ui/progress-bar";
 import { ArrowRight, Chevron } from "@/components/ui/icons";
 import { ProviderPicker, type ProviderChoice } from "@/components/book/provider-picker";
 import { Steps } from "@/components/ui/steps";
+import { PUBLIC_MODE } from "@/lib/mode";
 
 type Phase =
   | { kind: "idle" }
@@ -315,20 +316,32 @@ export function TranslateFlow({ defaults }: { defaults: FlowDefaults }) {
             </button>
           </div>
           <p className="mt-3 text-[0.8125rem] leading-relaxed text-muted">
-            A prévia traduz só um trecho do começo (um pedido) para você avaliar a qualidade. A tradução continua no servidor, mesmo se você fechar
-            esta página.
+            A prévia traduz só um trecho do começo (um pedido) para você avaliar a qualidade.{" "}
+            {PUBLIC_MODE
+              ? "A tradução acontece neste aparelho: deixe o Verso aberto enquanto traduz — se fechar, ela continua de onde parou quando você voltar."
+              : "A tradução continua no servidor, mesmo se você fechar esta página."}
           </p>
           {startError && (
             <p className="mt-4 text-[0.9375rem] text-accent" role="alert">
               {startError}
             </p>
           )}
-          {defaults.demo && (
-            <p className="mt-6 rounded-xl bg-paper-2 px-4 py-3 text-[0.8125rem] leading-relaxed text-ink-2">
-              <strong className="font-medium text-ink">Modo demonstração.</strong> Nenhum provedor de IA está configurado, então o texto será copiado
-              sem tradução — útil para testar o fluxo. Configure uma chave em <code className="text-[0.75rem]">.env.local</code>.
-            </p>
-          )}
+          {defaults.demo &&
+            (PUBLIC_MODE ? (
+              <p className="mt-6 rounded-xl bg-paper-2 px-4 py-3 text-[0.875rem] leading-relaxed text-ink-2">
+                <strong className="font-medium text-ink">Falta só a chave gratuita.</strong> Para traduzir de graça, crie uma chave do Gemini (sem
+                cartão, leva um minuto) e cole em{" "}
+                <a href="/configuracoes" className="link text-ink">
+                  Ajustes
+                </a>
+                .
+              </p>
+            ) : (
+              <p className="mt-6 rounded-xl bg-paper-2 px-4 py-3 text-[0.8125rem] leading-relaxed text-ink-2">
+                <strong className="font-medium text-ink">Modo demonstração.</strong> Nenhum provedor de IA está configurado, então o texto será
+                copiado sem tradução — útil para testar o fluxo. Configure uma chave em <code className="text-[0.75rem]">.env.local</code>.
+              </p>
+            ))}
         </div>
       )}
     </div>

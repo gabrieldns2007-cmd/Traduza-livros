@@ -1,7 +1,7 @@
-import { createHash } from "node:crypto";
 import { fail, loadBook } from "@/lib/api";
 import { store } from "@/lib/storage";
 import { slugify } from "@/utils/text";
+import { shortHash } from "@/utils/hash";
 import { buildTranslatedEpub } from "@/services/export/epub-export";
 import { buildTranslatedPdf, PdfExportError } from "@/services/export/pdf-export";
 
@@ -15,10 +15,7 @@ export async function GET(_req: Request, { params }: Ctx) {
   const meta = await loadBook(id);
   if (!meta) return fail("Livro não encontrado.", 404);
 
-  const version = createHash("sha1")
-    .update(`${meta.updatedAt}|${meta.contentVersion}|${meta.translatedTitle ?? ""}`)
-    .digest("hex")
-    .slice(0, 12);
+  const version = shortHash(`${meta.updatedAt}|${meta.contentVersion}|${meta.translatedTitle ?? ""}`);
   const cacheName = `exports/${format}-${version}.${format}`;
 
   let data: Uint8Array;

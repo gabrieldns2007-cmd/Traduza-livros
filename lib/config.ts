@@ -12,6 +12,8 @@ function int(name: string, fallback: number): number {
 export const config = {
   /** lido sob demanda, para respeitar DATA_DIR definido depois do carregamento */
   get dataDir() {
+    // na versão pública os dados ficam no navegador (IndexedDB), separados por conta
+    if (typeof window !== "undefined") return (globalThis as { __versoDataDir?: string }).__versoDataDir ?? "/data";
     return path.resolve(/*turbopackIgnore: true*/ process.env.DATA_DIR || path.join(process.cwd(), "data"));
   },
   maxUploadBytes: int("MAX_UPLOAD_MB", 100) * 1024 * 1024,
@@ -139,7 +141,8 @@ export function providerConfigs(s?: ProviderSettings): ProviderConfig[] {
     {
       id: "demo",
       label: "Demonstração (sem IA)",
-      available: true,
+      // na versão pública, só para testes (copiaria o texto sem traduzir)
+      available: process.env.NEXT_PUBLIC_VERSO_MODE !== "public" || process.env.NEXT_PUBLIC_VERSO_TEST_LOGIN === "1",
       model: "demo",
       analysisModel: "demo",
       paid: false,

@@ -16,7 +16,7 @@
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomId as randomUUID } from "@/utils/id";
 import { config, type ProviderSettings } from "@/lib/config";
 import type { BookMeta, DocContent, GlossaryEntry } from "@/types/book";
 import { KeyedMutex } from "@/utils/async";
@@ -137,7 +137,7 @@ class BookStore {
     await writeAtomic(this.path(id, name), data);
   }
 
-  async readFile(id: string, name: string): Promise<Buffer> {
+  async readFile(id: string, name: string): Promise<Uint8Array> {
     return fs.readFile(this.path(id, name));
   }
 
