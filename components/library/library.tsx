@@ -1,133 +1,252 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { BookSummary } from "@/types/book";
 import { api } from "@/lib/client";
-import { languageLabel } from "@/lib/languages";
-import { STATUS_LABEL, isActive, formatDate } from "@/lib/format";
-import { ProgressBar } from "@/components/ui/progress-bar";
-import { ArrowRight } from "@/components/ui/icons";
+import { isActive } from "@/lib/format";
+import { ButtonLink } from "@/components/ui/button";
+import { Plus } from "@/components/ui/icons";
 import { LinkPending } from "@/components/ui/pending";
+import { Bookshelf, EmptyShelf } from "./bookshelf";
+import { BookSheet } from "./book-sheet";
+import { assignBindings, countLine, sortBooks, summaryOf } from "./book-look";
+import s from "./bookshelf.module.css";
 
+/** Parâmetro da URL com o livro aberto: o Voltar do celular fecha o painel e o link reabre o livro. */
+const PARAM = "livro";
+
+function urlWith(id: string | null) {
+  const url = new URL(window.location.href);
+  if (id) url.searchParams.set(PARAM, id);
+  else url.searchParams.delete(PARAM);
+  return `${url.pathname}${url.search}${url.hash}`;
+}
+
+/**
+ * “Meus livros”: a pequena biblioteca do cliente. A lista inicial vem do
+ * servidor (sem carregar de novo no navegador); enquanto algum livro traduz,
+ * ela se atualiza a cada 3 s (e para quando a aba fica escondida).
+ */
 export function Library({ initial }: { initial: BookSummary[] }) {
-  const [books, setBooks] = useState(initial);
-  const anyActive = books.some((b) => isActive(b.status));
+  const [books, setBooks] = useState(() => sortBooks(initial));
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
+  const [flight, setFlight] = useState(true);
+  const panelId = useId();
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
+  // estado atual para os ouvintes do histórico (registrados uma vez só)
+  const live = useRef({ books, openId, closing });
+  useEffect(() => {
+    live.current = { books, openId, closing };
+  });
+  /** abrimos com pushState (então Voltar/fechar = history.back) */
+  const pushed = useRef(false);
+  /** para onde vai o foco depois de fechar: o livro na estante ou o título */
+  const focusAfter = useRef<string | null>(null);
+
+  const bindings = useMemo(() => assignBindings(books), [books]);
+
+  /* ---------- atualização ao vivo ---------- */
+  const anyActive = books.some((b) => isActive(b.status));
   useEffect(() => {
     if (!anyActive) return;
-    const t = setInterval(async () => {
+    let alive = true;
+    let busy = false;
+    const tick = async () => {
+      if (busy || document.hidden) return;
+      busy = true;
       try {
-        const { books: b } = await api<{ books: BookSummary[] }>("/api/books");
-        setBooks(b);
+        const { books: list } = await api<{ books: BookSummary[] }>("/api/books");
+        if (alive) setBooks(sortBooks(list));
       } catch {
-        /* ignora */
+        /* sem rede: tenta de novo no próximo ciclo */
+      } finally {
+        busy = false;
       }
-    }, 3000);
-    return () => clearInterval(t);
+    };
+    const timer = setInterval(tick, 3000);
+    const onVisible = () => !document.hidden && void tick();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [anyActive]);
 
-  if (!books.length) {
-    return (
-      <div className="rise mt-16 border-t border-rule pt-10">
-        <p className="serif text-[1.5rem] leading-snug text-ink-2 italic">Nenhum livro ainda.</p>
-        <Link href="/" className="group mt-5 inline-flex items-center gap-2 text-[1rem] text-ink">
-          Traduza seu primeiro livro <ArrowRight className="transition-transform group-hover:translate-x-0.5" />
-        </Link>
-      </div>
-    );
-  }
+  /* ---------- abrir e fechar (com o histórico do navegador) ---------- */
+  const open = useCallback((id: string) => {
+    if (live.current.openId) return;
+    window.history.pushState({ versoLivro: id }, "", urlWith(id));
+    pushed.current = true;
+    setFlight(true);
+    setClosing(false);
+    setOpenId(id);
+  }, []);
 
-  return (
-    <ul className="mt-10 border-t border-rule sm:mt-14">
-      {books.map((b, i) => (
-        <li key={b.id} className="rise border-b border-rule" style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}>
-          <BookRow book={b} />
-        </li>
-      ))}
-    </ul>
+  const requestClose = useCallback(() => {
+    const { openId: id, closing: already } = live.current;
+    if (!id || already) return;
+    if (pushed.current && window.history.state?.versoLivro === id) {
+      window.history.back(); // o popstate fecha
+      return;
+    }
+    pushed.current = false;
+    window.history.replaceState(null, "", urlWith(null));
+    setClosing(true);
+  }, []);
+
+  const onClosed = useCallback(() => {
+    focusAfter.current = live.current.openId;
+    setOpenId(null);
+    setClosing(false);
+  }, []);
+
+  // ?livro=<id> ao carregar (link ou recarregar a página) e Voltar/Avançar
+  useEffect(() => {
+    const fromUrl = () => new URLSearchParams(window.location.search).get(PARAM);
+    const first = fromUrl();
+    if (first) {
+      if (live.current.books.some((b) => b.id === first)) {
+        pushed.current = false;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- abre o livro pedido no link
+        setFlight(false);
+        setOpenId(first);
+      } else {
+        window.history.replaceState(null, "", urlWith(null));
+      }
+    }
+    const onPop = () => {
+      const id = fromUrl();
+      const { openId: current, closing: already, books: list } = live.current;
+      if (!id) {
+        if (current && !already) {
+          pushed.current = false;
+          setClosing(true);
+        }
+        return;
+      }
+      if (!current && list.some((b) => b.id === id)) {
+        pushed.current = window.history.state?.versoLivro === id;
+        setFlight(true);
+        setClosing(false);
+        setOpenId(id);
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // o livro aberto sumiu da lista (ex.: foi apagado): fecha e devolve o foco ao título
+  const openBook = openId ? books.find((b) => b.id === openId) : undefined;
+  useEffect(() => {
+    if (!openId || openBook) return;
+    if (pushed.current) window.history.replaceState(null, "", urlWith(null));
+    pushed.current = false;
+    focusAfter.current = "";
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reage à lista atualizada
+    setOpenId(null);
+    setClosing(false);
+  }, [openId, openBook]);
+
+  // depois de fechar (o fundo já voltou a ser interativo), o foco volta para o livro
+  useEffect(() => {
+    if (openId !== null || focusAfter.current === null) return;
+    const id = focusAfter.current;
+    focusAfter.current = null;
+    const target = id ? document.querySelector<HTMLElement>(`[data-slot="${CSS.escape(id)}"] button`) : null;
+    (target ?? headingRef.current)?.focus({ preventScroll: true });
+  }, [openId]);
+
+  const origin = useCallback(
+    () => (openId ? document.querySelector<HTMLElement>(`[data-slot="${CSS.escape(openId)}"] [data-book-scene]`) : null),
+    [openId],
   );
-}
 
-function Cover({ book }: { book: BookSummary }) {
-  const [failed, setFailed] = useState(false);
-  if (book.hasCover && !failed) {
-    return (
-      // eslint-disable-next-line @next/next/no-img-element
-      <img
-        src={`/api/books/${book.id}/cover`}
-        alt=""
-        loading="lazy"
-        onError={() => setFailed(true)}
-        className="h-[5.25rem] w-[3.6rem] shrink-0 rounded-[3px] object-cover shadow-[0_1px_2px_rgba(0,0,0,0.12),0_4px_14px_rgba(0,0,0,0.06)] sm:h-[6.5rem] sm:w-[4.4rem]"
-      />
-    );
-  }
-  // capa tipográfica quando o livro não tem imagem
-  return (
-    <div className="flex h-[5.25rem] w-[3.6rem] shrink-0 flex-col justify-between rounded-[3px] bg-paper-3 p-1.5 shadow-[inset_0_0_0_1px_var(--rule)] sm:h-[6.5rem] sm:w-[4.4rem] sm:p-2">
-      <span className="serif line-clamp-4 text-[0.5rem] leading-[1.15] text-ink-2 sm:text-[0.5625rem]">{book.translatedTitle || book.title}</span>
-      <span className="h-px w-3 bg-accent" />
-    </div>
-  );
-}
+  const count = books.length;
+  const summary = summaryOf(books);
 
-function BookRow({ book }: { book: BookSummary }) {
-  const active = isActive(book.status);
-  const title = book.status === "done" && book.translatedTitle ? book.translatedTitle : book.title;
-  const source = book.sourceLanguage ?? book.detectedLanguage;
   return (
-    <div className="flex gap-4 py-6 sm:gap-6">
-      <Link href={`/livros/${book.id}`} className="shrink-0" tabIndex={-1} aria-hidden>
-        <Cover book={book} />
-      </Link>
-      <div className="min-w-0 flex-1">
-        <Link href={`/livros/${book.id}`} className="block">
-          <h2 className="serif text-[1.3rem] leading-[1.2] tracking-[-0.01em] text-ink text-balance sm:text-[1.5rem]">{title}</h2>
-          {book.author && <p className="serif mt-0.5 truncate text-[0.9375rem] text-ink-2 italic">{book.author}</p>}
-        </Link>
-        <p className="mt-2 text-[0.8125rem] text-muted">
-          {languageLabel(source, "Original")} → {languageLabel(book.targetLanguage)}
-        </p>
-        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-          <span className={`text-[0.8125rem] ${book.status === "done" ? "text-ink" : book.status === "error" ? "text-accent" : "text-ink-2"}`}>
-            {active || book.status === "paused" ? (
-              <span className="num">
-                {STATUS_LABEL[book.status]} · {Math.floor(book.percent)}%
-              </span>
-            ) : (
-              <span className="num">
-                {STATUS_LABEL[book.status]}
-                {book.status === "done" ? " · 100%" : ""}
-              </span>
-            )}
-          </span>
-          {(active || book.status === "paused") && <ProgressBar value={book.percent} active={active} className="w-24 sm:w-32" />}
-          <span className="hidden text-[0.75rem] text-muted sm:inline">{formatDate(book.createdAt)}</span>
-        </div>
-        <div className="mt-3.5 flex flex-wrap gap-x-5 gap-y-2 text-[0.875rem]">
-          {book.status === "done" ? (
-            <>
-              <Link href={`/livros/${book.id}/revisar/1`} className="link inline-flex items-center gap-1.5 py-1 text-ink">
-                Continuar
-                <LinkPending />
-              </Link>
-              <a href={`/api/books/${book.id}/export/epub`} download className="link text-ink-2 hover:text-ink">
-                Baixar EPUB
-              </a>
-              <Link href={`/livros/${book.id}`} className="link inline-flex items-center gap-1.5 py-1 text-ink-2 hover:text-ink">
-                Detalhes
-                <LinkPending />
-              </Link>
-            </>
-          ) : (
-            <Link href={`/livros/${book.id}`} className="link inline-flex items-center gap-1.5 py-1 text-ink">
-              {book.status === "ready" ? "Começar" : active ? "Acompanhar" : "Continuar"}
-              <LinkPending />
-            </Link>
+    <div className={s.theme}>
+      <header className="rise">
+        <h1
+          ref={headingRef}
+          tabIndex={-1}
+          className="serif text-[2.6rem] leading-none font-[380] tracking-[-0.035em] whitespace-nowrap text-ink outline-none sm:text-[3.4rem]"
+        >
+          Meus livros
+        </h1>
+        {/* o botão desce para a linha de baixo quando falta espaço; o título nunca quebra */}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <p className="num text-[0.9375rem] text-muted">{countLine(count)}</p>
+          {count > 0 && (
+            <ButtonLink href="/" variant="secondary" size="sm" className="relative shrink-0 !pr-5 !pl-4">
+              <Plus />
+              Novo livro
+              <LinkPending className="absolute right-2" />
+            </ButtonLink>
           )}
         </div>
-      </div>
+        {summary.length > 0 && (
+          <p className="num mt-2 text-[0.875rem] leading-relaxed text-pretty text-ink-2">
+            {summary.map((part, i) => (
+              <span key={part.key}>
+                <span className="whitespace-nowrap">
+                  {part.live && (
+                    <span className="pulse-dot mr-2 mb-[0.15em] inline-block h-1.5 w-1.5 rounded-full bg-accent align-middle" aria-hidden />
+                  )}
+                  {part.text}
+                  {i < summary.length - 1 && <span className="pr-[0.15em] pl-[0.4em] text-muted">·</span>}
+                </span>{" "}
+              </span>
+            ))}
+          </p>
+        )}
+      </header>
+
+      {count === 0 ? (
+        <div className="mt-8 sm:mt-12">
+          <EmptyShelf />
+          <div className="rise mt-7 max-w-[26rem]" style={{ animationDelay: "160ms" }}>
+            <p className="text-[0.9375rem] leading-relaxed text-pretty text-ink-2">
+              Envie um EPUB ou PDF. Ele entra nesta estante e é traduzido do começo ao fim, com capítulos e capa.
+            </p>
+            <ButtonLink href="/" size="lg" className="relative mt-6 w-full sm:w-auto">
+              <Plus />
+              Traduzir meu primeiro livro
+              <LinkPending className="absolute right-5" />
+            </ButtonLink>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-8 sm:mt-12">
+          <Bookshelf books={books} bindings={bindings} openId={openId} panelId={panelId} onOpen={open} />
+          {count === 1 && (
+            <p className="serif mt-6 text-[1.125rem] leading-snug text-balance text-ink-2 italic">
+              Os próximos livros que você traduzir vão ficar aqui.
+            </p>
+          )}
+          <p className={`${s.hint} mt-4 text-[0.8125rem] text-muted`} data-hidden={openId ? "" : undefined} aria-hidden={openId ? true : undefined}>
+            <span className={s.hintTouch}>Toque em um livro para tirá-lo da estante.</span>
+            <span className={s.hintPointer}>Clique em um livro para tirá-lo da estante.</span>
+          </p>
+        </div>
+      )}
+
+      {openBook && (
+        <BookSheet
+          key={openBook.id}
+          id={panelId}
+          book={openBook}
+          binding={bindings.get(openBook.id)!}
+          closing={closing}
+          flight={flight}
+          origin={origin}
+          onRequestClose={requestClose}
+          onClosed={onClosed}
+        />
+      )}
     </div>
   );
 }

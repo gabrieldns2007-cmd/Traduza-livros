@@ -1,0 +1,1047 @@
+/*
+ * Meus livros — a estante.
+ * Livros de pé, capa para a frente, em prateleiras finas sobre uma parede
+ * levemente afundada. O livro é um objeto em CSS (capa, lombada, bloco de
+ * páginas e sombra), sem WebGL. Animações só com transform e opacity.
+ */
+
+/* ------------------------------------------------------------------ */
+/* tons (claro / escuro) — usados pela estante e pelo painel           */
+/* ------------------------------------------------------------------ */
+
+.theme {
+  --wall: color-mix(in srgb, var(--paper-3) 42%, var(--paper));
+  --wall-shade: rgba(70, 50, 25, 0.16);
+  --wall-edge: rgba(70, 50, 25, 0.06);
+  --plank-back: #d9cfbc;
+  --plank-top: #e9e1d1;
+  --plank-hi: #faf6ee;
+  --plank-front: #dcd2bf;
+  --plank-low: #cbbfa8;
+  --plank-shadow: rgba(70, 50, 25, 0.32);
+  --glow: transparent;
+  --contact: rgba(45, 30, 12, 0.5);
+  --cast: rgba(60, 40, 15, 0.2);
+  --cover-edge: rgba(40, 28, 12, 0.22);
+  --page: #f4efe3;
+  --page-edge: #e2d9c6;
+  --wire: #c9bfac;
+  --ghost-line: #c4b9a4;
+  --veil: rgba(52, 40, 22, 0.16);
+  --sheet: var(--paper);
+  --sheet-edge: var(--rule);
+  --sheet-shadow: rgba(40, 30, 18, 0.22);
+  --hero-shadow: rgba(45, 30, 12, 0.34);
+}
+
+@media (prefers-color-scheme: dark) {
+  .theme {
+    --wall: #191815;
+    --wall-shade: rgba(0, 0, 0, 0.6);
+    --wall-edge: rgba(255, 240, 215, 0.04);
+    --plank-back: #1f1d1a;
+    --plank-top: #34302a;
+    --plank-hi: #4d4840;
+    --plank-front: #2c2924;
+    --plank-low: #201e1a;
+    --plank-shadow: rgba(0, 0, 0, 0.8);
+    --glow: rgba(244, 214, 168, 0.075);
+    --contact: rgba(0, 0, 0, 0.85);
+    --cast: rgba(0, 0, 0, 0.5);
+    --cover-edge: rgba(255, 255, 255, 0.07);
+    --page: #d9cfbb;
+    --page-edge: #b9ae98;
+    --wire: #4a463e;
+    --ghost-line: #57524a;
+    --veil: rgba(0, 0, 0, 0.62);
+    --sheet: var(--paper-2);
+    --sheet-edge: var(--rule-strong);
+    --sheet-shadow: rgba(0, 0, 0, 0.7);
+    --hero-shadow: rgba(0, 0, 0, 0.75);
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* o livro (objeto 3D)                                                 */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Sem preserve-3d em repouso: capa, lombada e topo são camadas irmãs, cada
+ * uma girada em torno do centro do livro, no mesmo espaço de perspectiva.
+ * A perspectiva é proporcional à largura, então o livro da estante e o do
+ * painel são a mesma imagem em escalas diferentes (o voo é só um FLIP).
+ */
+.scene {
+  --bh: calc(var(--bw) * var(--ratio));
+  --t: calc(var(--bw) * var(--thick));
+  --ry: 28deg;
+  --rx: -9deg;
+  --pose: translateZ(calc(var(--t) * -0.5)) rotateX(var(--rx)) rotateY(var(--ry));
+  position: relative;
+  display: block;
+  width: var(--bw);
+  height: var(--bh);
+  perspective: calc(var(--bw) * 5.5);
+  perspective-origin: 50% 10%;
+}
+.sceneShelf {
+  --bw: min(calc(var(--slot-w) * 0.74 * var(--scale, 1)), 8.25rem);
+}
+.sceneHero {
+  --bw: var(--hero-w, 6.25rem);
+}
+
+.rig {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+}
+
+.face {
+  position: absolute;
+  display: block;
+}
+
+.front {
+  container-type: inline-size;
+  inset: 0;
+  overflow: hidden;
+  border-radius: 1px 2.5px 2.5px 1px;
+  background: var(--cloth);
+  transform: var(--pose) translateZ(calc(var(--t) * 0.5));
+  transition: background-color 0.5s ease;
+}
+.front img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* dobradiça da capa junto da lombada + luz suave vinda do alto à esquerda */
+.front::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.3) 0, rgba(255, 255, 255, 0.14) 1.4%, rgba(0, 0, 0, 0.16) 3.2%, rgba(0, 0, 0, 0.03) 6%, transparent 9%),
+    linear-gradient(112deg, rgba(255, 255, 255, 0.15) 0%, rgba(255, 255, 255, 0.04) 32%, transparent 50%, rgba(0, 0, 0, 0.08) 100%);
+}
+.front::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 0.5px var(--cover-edge);
+}
+
+/* lombada: face lateral esquerda, com o tecido um tom abaixo, filetes e (no destaque) o título */
+.spine {
+  top: 0;
+  left: calc(50% - var(--t) * 0.5);
+  width: var(--t);
+  height: 100%;
+  overflow: hidden;
+  border-radius: 2px 1px 1px 2px;
+  background: var(--spine);
+  transform: var(--pose) rotateY(-90deg) translateZ(calc(var(--bw) * 0.5));
+  transition: background-color 0.5s ease;
+}
+/* volume arredondado da lombada */
+.spine::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.34) 0%,
+    rgba(0, 0, 0, 0.08) 22%,
+    rgba(255, 255, 255, 0.08) 48%,
+    rgba(0, 0, 0, 0.04) 74%,
+    rgba(0, 0, 0, 0.26) 100%
+  );
+}
+.spineLight::before {
+  background: linear-gradient(
+    90deg,
+    rgba(60, 40, 15, 0.3) 0%,
+    rgba(60, 40, 15, 0.1) 22%,
+    rgba(255, 255, 255, 0.12) 48%,
+    rgba(60, 40, 15, 0.06) 74%,
+    rgba(60, 40, 15, 0.26) 100%
+  );
+}
+/* filetes no alto e no pé */
+.bands {
+  position: absolute;
+  inset: 0;
+  opacity: 0.75;
+  background:
+    linear-gradient(
+        to bottom,
+        transparent 6.5%,
+        var(--rule) 6.5% calc(6.5% + 1px),
+        transparent calc(6.5% + 1px) calc(6.5% + 3px),
+        var(--rule) calc(6.5% + 3px) calc(6.5% + 4px),
+        transparent calc(6.5% + 4px)
+      )
+      no-repeat,
+    linear-gradient(
+        to top,
+        transparent 6.5%,
+        var(--rule) 6.5% calc(6.5% + 1px),
+        transparent calc(6.5% + 1px) calc(6.5% + 3px),
+        var(--rule) calc(6.5% + 3px) calc(6.5% + 4px),
+        transparent calc(6.5% + 4px)
+      )
+      no-repeat;
+}
+.spineTitle {
+  position: absolute;
+  top: 14%;
+  bottom: 14%;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+  writing-mode: vertical-rl;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
+  color: var(--ink);
+  font-size: min(calc(var(--t) * 0.46), 0.875rem);
+  line-height: var(--t);
+  letter-spacing: 0.02em;
+}
+
+/* topo: o bloco de páginas visto de cima, entre as duas capas duras */
+.top {
+  left: 0;
+  top: calc(50% - var(--t) * 0.5);
+  width: 100%;
+  height: var(--t);
+  background:
+    linear-gradient(to bottom, var(--spine) 0 9%, transparent 9% 91%, var(--spine) 91%), linear-gradient(to right, var(--spine) 0 2%, transparent 2%),
+    repeating-linear-gradient(to bottom, var(--page) 0 1px, var(--page-edge) 1px 1.6px);
+  transform: var(--pose) rotateX(90deg) translateZ(calc(var(--bh) * 0.5));
+}
+
+/* sombra projetada na parede (luz do alto à esquerda), só com gradiente */
+.cast {
+  position: absolute;
+  top: 6%;
+  bottom: -1%;
+  left: 50%;
+  right: -26%;
+  background: radial-gradient(ellipse 100% 62% at 0% 58%, var(--cast), transparent 72%);
+}
+
+/* capa tipográfica (livro sem imagem) */
+.typo {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16cqi 11cqi 7cqi 13cqi;
+  text-align: center;
+  color: var(--ink);
+  background-image:
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 3px),
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0.028) 0 1px, transparent 1px 3px);
+}
+/* moldura fina interna */
+.typo::before {
+  content: "";
+  position: absolute;
+  inset: 5.5cqi 5.5cqi 5.5cqi 7.5cqi;
+  border: 1px solid var(--rule);
+  border-radius: 1px;
+  opacity: 0.42;
+}
+.typoTitle {
+  --lines: 5;
+  display: -webkit-box;
+  flex: none;
+  max-width: 100%;
+  min-height: 0;
+  max-height: calc(1.1em * var(--lines));
+  overflow: hidden;
+  font-family: var(--font-serif);
+  font-optical-sizing: auto;
+  font-size: 12.5cqi;
+  font-weight: 420;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--lines);
+}
+.typoTitle[data-fit="long"] {
+  --lines: 6;
+  font-size: 10.5cqi;
+}
+.typoTitle[data-fit="xlong"] {
+  --lines: 7;
+  font-size: 9cqi;
+}
+.typoRule {
+  flex: none;
+  width: 14cqi;
+  height: max(1px, 0.8cqi);
+  margin: 6cqi 0 4.5cqi;
+  background: var(--rule);
+}
+.typoAuthor {
+  display: -webkit-box;
+  flex: none;
+  max-width: 100%;
+  min-height: 0;
+  max-height: calc(1.2em * 2);
+  overflow: hidden;
+  font-family: var(--font-serif);
+  font-size: 8cqi;
+  font-style: italic;
+  line-height: 1.2;
+  opacity: 0.85;
+  overflow-wrap: break-word;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.typoMark {
+  flex: none;
+  margin-top: auto;
+  padding-top: 2cqi;
+  font-family: var(--font-serif);
+  font-size: max(5.5px, 7cqi);
+  letter-spacing: 0.02em;
+  opacity: 0.78;
+}
+.typoMark span {
+  color: var(--rule);
+}
+
+/* livro desenhado em linhas (estante vazia) */
+.wire .face {
+  border: 1px solid var(--wire);
+  background: transparent;
+}
+.wire .front {
+  background: color-mix(in srgb, var(--wall) 70%, transparent);
+}
+.wire .front::before,
+.wire .front::after,
+.wire .spine::before {
+  display: none;
+}
+.wireLines {
+  position: absolute;
+  inset: 24% 24% auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.wireLines span {
+  display: block;
+  width: 100%;
+  height: 1px;
+  background: var(--wire);
+}
+.wireLines span:nth-child(2) {
+  width: 66%;
+}
+.wireLines span:last-child {
+  width: 20%;
+  margin-top: 9px;
+  background: var(--accent);
+  opacity: 0.75;
+}
+
+/* ------------------------------------------------------------------ */
+/* a estante                                                           */
+/* ------------------------------------------------------------------ */
+
+.case {
+  --out: 0.875rem;
+  container-type: inline-size;
+  position: relative;
+  overflow-x: clip;
+  margin: 0 -1.25rem;
+  padding: 0.25rem var(--out) 0.375rem;
+  background: var(--wall);
+  box-shadow:
+    inset 0 1.5rem 1.75rem -1.75rem var(--wall-shade),
+    inset 0 -1px 0 var(--wall-edge),
+    inset 0 1px 0 var(--wall-edge);
+}
+@media (min-width: 640px) {
+  .case {
+    --out: 1.5rem;
+    margin: 0;
+    padding-top: 0.5rem;
+    border-radius: 1.25rem;
+  }
+}
+
+/* largura de cada lugar, a partir da largura da estante (a única “caixa de consulta”) */
+.grid {
+  --cols: 2;
+  --gap: 0.5rem;
+  --tag-h: 2.875rem;
+  --slot-w: calc((100cqi - (var(--cols) - 1) * var(--gap)) / var(--cols));
+  display: grid;
+  grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
+  column-gap: var(--gap);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@container (min-width: 300px) {
+  .grid {
+    --cols: 3;
+    --gap: 0.375rem;
+  }
+}
+@container (min-width: 540px) {
+  .grid {
+    --cols: 4;
+    --gap: 1rem;
+  }
+}
+@container (min-width: 720px) {
+  .grid {
+    --cols: 5;
+    --gap: 1.25rem;
+  }
+}
+
+.slot {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  min-width: 0;
+}
+
+/*
+ * A tábua (e o brilho quente atrás dela, no escuro) é desenhada pelo primeiro
+ * livro de cada prateleira, com a largura da fileira inteira. Quantos livros
+ * cabem por prateleira é decidido só pelo CSS (sem rearranjar depois de
+ * carregar a página).
+ */
+.slot::before,
+.slot::after {
+  content: "";
+  position: absolute;
+  display: none;
+  left: calc(-1 * var(--out));
+  width: calc(var(--cols) * 100% + (var(--cols) - 1) * var(--gap) + 2 * var(--out));
+  pointer-events: none;
+}
+.slot::before {
+  z-index: -1;
+  bottom: calc(var(--tag-h) - 0.3125rem);
+  height: 1.1875rem;
+  background: linear-gradient(
+    to bottom,
+    var(--plank-back) 0,
+    var(--plank-top) 62%,
+    var(--plank-hi) 64% 67%,
+    var(--plank-front) 67%,
+    var(--plank-low) 100%
+  );
+  box-shadow: 0 1rem 1.125rem -0.875rem var(--plank-shadow);
+}
+.slot::after {
+  z-index: -2;
+  top: 0;
+  bottom: var(--tag-h);
+  background: radial-gradient(ellipse 58% 72% at 50% 96%, var(--glow), transparent 72%);
+}
+.slot:nth-child(2n + 1)::before,
+.slot:nth-child(2n + 1)::after {
+  display: block;
+}
+@container (min-width: 300px) {
+  .slot:nth-child(n)::before,
+  .slot:nth-child(n)::after {
+    display: none;
+  }
+  .slot:nth-child(3n + 1)::before,
+  .slot:nth-child(3n + 1)::after {
+    display: block;
+  }
+}
+@container (min-width: 540px) {
+  .slot:nth-child(n)::before,
+  .slot:nth-child(n)::after {
+    display: none;
+  }
+  .slot:nth-child(4n + 1)::before,
+  .slot:nth-child(4n + 1)::after {
+    display: block;
+  }
+}
+@container (min-width: 720px) {
+  .slot:nth-child(n)::before,
+  .slot:nth-child(n)::after {
+    display: none;
+  }
+  .slot:nth-child(5n + 1)::before,
+  .slot:nth-child(5n + 1)::after {
+    display: block;
+  }
+}
+
+/* o lugar inteiro (livro + etiqueta) é um único botão */
+.bookBtn {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0.75rem;
+  background: none;
+  color: inherit;
+  text-align: center;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.bookBtn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.stand {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 1.375rem 0 0.375rem;
+}
+.lift {
+  position: relative;
+  display: block;
+  transition: transform 0.5s var(--ease-out-soft);
+  animation: book-in 0.7s var(--ease-out-soft) backwards;
+  animation-delay: calc(var(--i, 0) * 50ms + 60ms);
+}
+@keyframes book-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.75rem);
+  }
+}
+/* sombra de contato na tábua */
+.contact {
+  position: absolute;
+  left: 50%;
+  bottom: 0.1875rem;
+  width: calc(var(--slot-w) * 0.9);
+  height: 0.625rem;
+  transform: translateX(-47%);
+  background: radial-gradient(closest-side, var(--contact), transparent);
+  transition:
+    opacity 0.45s ease,
+    transform 0.5s var(--ease-out-soft);
+}
+
+/* resposta ao toque imediata (iOS precisa do touchstart no botão) */
+.bookBtn:active .lift {
+  transform: translateY(-0.25rem) scale(0.985);
+  transition-duration: 0.08s;
+}
+.bookBtn:active .contact {
+  opacity: 0.8;
+  transition-duration: 0.08s;
+}
+@media (hover: hover) {
+  .bookBtn:hover .lift {
+    transform: translateY(-0.4rem);
+  }
+  .bookBtn:hover .contact {
+    opacity: 0.7;
+    transform: translateX(-47%) scaleX(0.92);
+  }
+}
+
+/* o livro saiu da estante: fica o vão, com a marca de sombra */
+.slot[data-pulled] .lift {
+  visibility: hidden;
+}
+.slot[data-pulled] .contact {
+  opacity: 0.3;
+}
+
+/* etiqueta de situação (abaixo da tábua) */
+.tag {
+  display: flex;
+  height: var(--tag-h);
+  min-width: 0;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  padding: 0.75rem 0.25rem 0;
+  animation: tag-in 0.6s ease-out backwards;
+  animation-delay: calc(var(--i, 0) * 50ms + 200ms);
+}
+@keyframes tag-in {
+  from {
+    opacity: 0;
+  }
+}
+.tagText {
+  display: inline-flex;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.78125rem;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.tagText > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tagDot {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--accent);
+}
+.tagMeter {
+  display: flex;
+  width: min(100%, 6.25rem);
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.3125rem;
+}
+.tagBar {
+  position: relative;
+  height: 2px;
+  flex: 1;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--rule-strong);
+}
+.tagBar > span {
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform 0.8s var(--ease-out-soft);
+}
+.tagPct {
+  flex: none;
+  font-size: 0.71875rem;
+  line-height: 1;
+  color: var(--muted);
+}
+
+/* lugar livre no fim da última prateleira (só quando sobra espaço nela) */
+.ghostSlot .tag {
+  visibility: hidden;
+}
+.ghostLink {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  border-radius: 0.75rem;
+  color: var(--muted);
+  -webkit-tap-highlight-color: transparent;
+}
+.ghostBook {
+  display: flex;
+  width: min(calc(var(--slot-w) * 0.66), 7.5rem);
+  aspect-ratio: 1 / 1.48;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 1px dashed var(--ghost-line);
+  border-radius: 3px;
+  font-size: 0.78125rem;
+  line-height: 1.25;
+  transition:
+    border-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.12s ease;
+}
+.ghostIcon {
+  display: flex;
+  width: 2rem;
+  height: 2rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+}
+.ghostLink:active .ghostBook {
+  transform: scale(0.97);
+  transition-duration: 0.08s;
+}
+@media (hover: hover) {
+  .ghostLink:hover {
+    color: var(--ink);
+  }
+  .ghostLink:hover .ghostBook {
+    border-color: var(--ink-2);
+  }
+}
+.ghostSlot:nth-child(2n + 1) {
+  display: none;
+}
+@container (min-width: 300px) {
+  .ghostSlot:nth-child(n) {
+    display: flex;
+  }
+  .ghostSlot:nth-child(3n + 1) {
+    display: none;
+  }
+}
+@container (min-width: 540px) {
+  .ghostSlot:nth-child(n) {
+    display: flex;
+  }
+  .ghostSlot:nth-child(4n + 1) {
+    display: none;
+  }
+}
+@container (min-width: 720px) {
+  .ghostSlot:nth-child(n) {
+    display: flex;
+  }
+  .ghostSlot:nth-child(5n + 1) {
+    display: none;
+  }
+}
+
+/* estante vazia: o livro em linhas e a frase ao lado */
+.emptyNote {
+  grid-column: 2 / -1;
+  display: flex;
+  align-items: center;
+  padding: 1.375rem 0.5rem var(--tag-h) 0.75rem;
+  animation: tag-in 0.8s ease-out 0.25s backwards;
+}
+
+/* dica (escondida enquanto o painel está aberto, sem mexer no layout) */
+.hint {
+  transition: opacity 0.3s ease;
+}
+.hint[data-hidden] {
+  opacity: 0;
+}
+.hintTouch {
+  display: inline;
+}
+.hintPointer {
+  display: none;
+}
+@media (hover: hover) and (pointer: fine) and (min-width: 640px) {
+  .hintTouch {
+    display: none;
+  }
+  .hintPointer {
+    display: inline;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* o painel do livro tirado da estante                                 */
+/* ------------------------------------------------------------------ */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: var(--veil);
+}
+
+.panel {
+  --hero-w: 6.375rem;
+  --poke: 2.375rem;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  max-height: calc(100dvh - 0.5rem);
+  flex-direction: column;
+  outline: none;
+}
+@media (max-height: 720px) {
+  .panel {
+    --hero-w: 5.625rem;
+    --poke: 2.125rem;
+  }
+}
+@media (min-width: 640px) {
+  .panel {
+    --hero-w: 7.25rem;
+    --poke: 2.75rem;
+    bottom: 1.25rem;
+    width: min(32rem, calc(100% - 2.5rem));
+    margin-inline: auto;
+    max-height: calc(100dvh - 2rem);
+  }
+}
+
+/* o fundo do painel começa abaixo do livro, que fica metade para fora */
+.sheetBg {
+  position: absolute;
+  inset: var(--poke) 0 0 0;
+  border-radius: 1.5rem 1.5rem 0 0;
+  background: var(--sheet);
+  box-shadow:
+    0 -1px 0 var(--sheet-edge),
+    0 -1.25rem 3rem -1.25rem var(--sheet-shadow);
+}
+@media (min-width: 640px) {
+  .sheetBg {
+    border-radius: 1.5rem;
+    box-shadow:
+      0 0 0 1px var(--sheet-edge),
+      0 1.5rem 3.5rem -1rem var(--sheet-shadow);
+  }
+}
+.handle {
+  position: absolute;
+  top: calc(var(--poke) + 0.5rem);
+  left: 50%;
+  width: 2.25rem;
+  height: 4px;
+  margin-left: -1.125rem;
+  border-radius: 999px;
+  background: var(--rule-strong);
+}
+@media (min-width: 640px) {
+  .handle {
+    display: none;
+  }
+}
+
+.scroller {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 1.5rem max(1.25rem, env(safe-area-inset-bottom));
+}
+@media (max-width: 359px) {
+  .scroller {
+    padding-inline: 1.25rem;
+  }
+}
+
+.head {
+  display: grid;
+  grid-template-columns: var(--hero-w) minmax(0, 1fr);
+  column-gap: 1.125rem;
+  touch-action: none;
+}
+.heroCell {
+  position: relative;
+  isolation: isolate;
+  grid-row: 1 / span 2;
+  align-self: start;
+  display: flex;
+  justify-content: center;
+}
+/* sombra do livro “nas mãos” */
+.heroCell::after {
+  content: "";
+  position: absolute;
+  left: -6%;
+  right: -14%;
+  bottom: -0.625rem;
+  height: 1.25rem;
+  z-index: -1;
+  background: radial-gradient(closest-side, var(--hero-shadow), transparent);
+}
+.closeRow {
+  grid-column: 2;
+  container-type: inline-size;
+  display: flex;
+  justify-content: flex-end;
+  padding-top: calc(var(--poke) + 0.375rem);
+}
+.closeBtn {
+  display: inline-flex;
+  height: 2.75rem;
+  align-items: center;
+  gap: 0.375rem;
+  margin-right: -0.75rem;
+  padding: 0 0.75rem;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  color: var(--ink-2);
+  white-space: nowrap;
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    transform 0.12s ease;
+}
+.closeBtn:active {
+  transform: scale(0.96);
+  background: var(--paper-3);
+  transition-duration: 0.08s;
+}
+@media (hover: hover) {
+  .closeBtn:hover {
+    color: var(--ink);
+    background: var(--paper-3);
+  }
+}
+@container (max-width: 9.5rem) {
+  .closeText {
+    display: none;
+  }
+}
+.titles {
+  grid-column: 2;
+  min-width: 0;
+  padding-top: 0.125rem;
+}
+
+/* entrada do conteúdo do painel */
+.reveal {
+  animation: reveal 0.5s var(--ease-out-soft) backwards;
+}
+.reveal2 {
+  animation-delay: 0.06s;
+}
+.reveal3 {
+  animation-delay: 0.12s;
+}
+@keyframes reveal {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+.row {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.75rem 0;
+}
+@media (max-height: 720px) {
+  .row {
+    padding: 0.5625rem 0;
+  }
+}
+
+/* barra de progresso do painel: anima só o transform */
+.meter {
+  position: relative;
+  height: 3px;
+  margin-top: 0.625rem;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--rule);
+}
+@media (max-height: 720px) {
+  .meter {
+    margin-top: 0.5rem;
+  }
+}
+.meter > span {
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform 0.8s var(--ease-out-soft);
+}
+.meterCalm > span {
+  opacity: 0.55;
+}
+
+/* o livro que voa da estante até o painel (e de volta) */
+.flyer {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  visibility: hidden;
+  pointer-events: none;
+  transform-origin: 0 0;
+}
+
+/* navegadores sem unidades de contêiner (iOS antigo): tamanhos fixos, nada desaba */
+@supports not (width: 1cqi) {
+  .sceneShelf {
+    --bw: 6rem;
+  }
+  .contact {
+    width: 6.5rem;
+  }
+  .ghostBook {
+    width: 5.5rem;
+  }
+  .typo {
+    padding: 16% 11% 7% 13%;
+  }
+  .typoTitle {
+    font-size: 0.8rem;
+  }
+  .typoTitle[data-fit="long"],
+  .typoTitle[data-fit="xlong"] {
+    font-size: 0.65rem;
+  }
+  .typoAuthor {
+    font-size: 0.55rem;
+  }
+  .typoMark {
+    font-size: 0.45rem;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* movimento reduzido                                                  */
+/* ------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  .lift,
+  .tag,
+  .emptyNote,
+  .reveal {
+    animation: none;
+  }
+  .lift,
+  .contact,
+  .tagBar > span,
+  .meter > span,
+  .hint {
+    transition: none;
+  }
+  .bookBtn:active .lift {
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) and (hover: hover) {
+  .bookBtn:hover .lift {
+    transform: none;
+  }
+}

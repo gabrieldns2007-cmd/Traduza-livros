@@ -1,26 +1,10 @@
-import Link from "next/link";
 import type { BookSummary } from "@/types/book";
 import { Library } from "./library";
-import { LinkPending } from "@/components/ui/pending";
 
 /** Página “Meus livros” (usada pelo servidor e pela versão pública). */
 export function LibraryPageView({ books }: { books: BookSummary[] }) {
   return (
-    <main className="mx-auto w-full max-w-[48rem] px-5 pt-8 pb-24 sm:px-8 sm:pt-14">
-      <header className="rise flex items-end justify-between gap-4">
-        <div>
-          <h1 className="serif text-[2.6rem] leading-none font-[380] tracking-[-0.035em] text-ink sm:text-[3.4rem]">Meus livros</h1>
-          <p className="num mt-3 text-[0.9375rem] text-muted">
-            {books.length === 0 ? "Sua estante está vazia." : books.length === 1 ? "Um livro na estante." : `${books.length} livros na estante.`}
-          </p>
-        </div>
-        {books.length > 0 && (
-          <Link href="/" className="link mb-1 inline-flex shrink-0 items-center gap-1.5 py-1 text-[0.875rem] text-ink-2 hover:text-ink">
-            Novo livro
-            <LinkPending />
-          </Link>
-        )}
-      </header>
+    <main className="mx-auto w-full max-w-[60rem] px-5 pt-7 pb-24 sm:px-8 sm:pt-14">
       <Library initial={books} />
     </main>
   );
