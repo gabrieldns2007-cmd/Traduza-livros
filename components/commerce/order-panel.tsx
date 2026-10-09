@@ -222,7 +222,7 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
           <strong className="font-medium text-ink">Grátis durante o beta.</strong> Enquanto o Verso está em testes, você não paga nada.
         </p>
       )}
-      <Button onClick={order} disabled={!!busy || !chosen.available || !canPay || sampleState === "running"} className="mt-5 h-14 w-full text-[1rem]">
+      <Button onClick={order} size="lg" disabled={!!busy || !chosen.available || !canPay || sampleState === "running"} className="mt-5 w-full">
         {busy === "order"
           ? "Um instante…"
           : !canPay
