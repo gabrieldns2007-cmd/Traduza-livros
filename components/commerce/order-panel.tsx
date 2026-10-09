@@ -9,7 +9,7 @@ import { formatNumber } from "@/lib/format";
 import { brl } from "@/lib/money";
 import { Select } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Check, Chevron } from "@/components/ui/icons";
+import { ArrowRight, Check, Chevron, Pencil } from "@/components/ui/icons";
 import { SampleView } from "./sample-view";
 
 export interface Offer {
@@ -26,21 +26,22 @@ export interface Offer {
   checkout: { mode: "beta" | "live"; payments: boolean };
 }
 
+/** O que a nova edição traz — escrito como resultado. */
 export const INCLUDED = [
-  "Tradução do livro",
-  "Organização dos capítulos",
-  "Formatação preservada",
-  "EPUB",
-  "PDF",
-  "Revisão da tradução",
-  "Download do arquivo final",
+  "O livro inteiro traduzido",
+  "Capítulos e sumário organizados",
+  "A formatação do original",
+  "EPUB para leitores digitais",
+  "PDF com cara de livro",
+  "Revisão online, parágrafo a parágrafo",
+  "Arquivos para baixar quando quiser",
 ];
 
 /**
  * Passo “Confirmar”: o livro está pronto para ser traduzido. A pessoa confere
- * idiomas, escolhe o tipo de tradução (já com o preço), vê o que está incluído
- * e toca em “Pagar e traduzir”. Nada técnico aparece aqui — só o livro, o
- * idioma e o preço.
+ * idiomas, escolhe o tipo de tradução (já com o valor), pode ler uma amostra
+ * grátis, vê o que a nova edição traz e toca em “Começar tradução” — com o
+ * valor no próprio botão. Nada técnico aparece aqui.
  */
 export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: BookView) => void }) {
   const [offer, setOffer] = useState<Offer | null>(null);
@@ -119,18 +120,28 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
   return (
     <section className="rise">
       <h2 className="serif text-[1.75rem] leading-tight tracking-[-0.015em] text-ink text-balance sm:text-[2rem]">
-        Seu livro está pronto para tradução.
+        Tudo pronto para a sua nova edição.
       </h2>
 
       {/* ---------- o livro ---------- */}
       <div className="mt-6 rounded-[1.25rem] border border-rule px-5 py-5 sm:px-6">
         <p className="serif text-[1.25rem] leading-snug text-ink">{offer.title}</p>
         {offer.author && <p className="serif text-[1rem] text-ink-2 italic">{offer.author}</p>}
-        <div className="mt-4 flex items-baseline justify-between gap-4 border-t border-rule pt-3">
-          <p className="text-[0.9375rem] text-ink">
+        <div className="mt-4 flex items-center justify-between gap-4 border-t border-rule pt-3">
+          <p className="min-w-0 text-[0.9375rem] text-ink">
             {sourceLabel} <span className="text-muted">→</span> {languageLabel(target)}
           </p>
-          <button onClick={() => setEditLangs((v) => !v)} className="link shrink-0 text-[0.8125rem] text-muted hover:text-ink">
+          <button
+            type="button"
+            onClick={() => setEditLangs((v) => !v)}
+            aria-expanded={editLangs}
+            className={`relative inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3.5 text-[0.8125rem] font-medium transition-[background-color,border-color,color,transform] duration-200 ease-out before:absolute before:-inset-1 before:content-[''] active:scale-[0.96] ${
+              editLangs
+                ? "border-ink bg-ink text-paper hover:bg-ink/88"
+                : "border-rule-strong text-ink-2 hover:border-ink hover:bg-paper-2 hover:text-ink active:bg-paper-3"
+            }`}
+          >
+            {editLangs ? <Check className="h-3.5 w-3.5" /> : <Pencil className="h-3.5 w-3.5" />}
             {editLangs ? "Pronto" : "Alterar"}
           </button>
         </div>
@@ -176,38 +187,67 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
               aria-checked={sel}
               disabled={!l.available}
               onClick={() => setLevel(l.id)}
-              className={`flex w-full items-start gap-3 rounded-2xl border px-4 py-4 text-left transition-colors active:bg-paper-2 disabled:cursor-not-allowed disabled:opacity-55 sm:px-5 ${sel ? "border-ink" : "border-rule hover:border-rule-strong"}`}
+              className={`flex w-full items-start gap-3.5 rounded-[1.25rem] border px-4 py-4 text-left transition-[background-color,border-color,box-shadow,transform] duration-200 ease-out disabled:cursor-not-allowed sm:px-5 ${
+                sel
+                  ? "border-ink shadow-[0_0_0_1px_var(--ink)]"
+                  : l.available
+                    ? "border-rule hover:border-rule-strong hover:bg-paper-2 active:scale-[0.99] active:bg-paper-3"
+                    : "border-dashed border-rule-strong"
+              }`}
             >
               <span
-                className={`mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${sel ? "border-ink bg-ink" : "border-rule-strong"}`}
+                aria-hidden
+                className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors duration-200 ${
+                  sel ? "border-ink bg-ink text-paper" : l.available ? "border-rule-strong" : "border-rule"
+                }`}
               >
-                {sel && <span className="h-1.5 w-1.5 rounded-full bg-paper" />}
+                {sel && <Check className="h-3.5 w-3.5" />}
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-baseline justify-between gap-3">
-                  <span className="text-[1rem] font-medium text-ink">Tradução {l.label}</span>
-                  <span className="serif num shrink-0 text-[1.125rem] text-ink">{l.available ? brl(l.priceBrl) : "Em breve"}</span>
+                  <span className={`text-[1rem] font-medium ${l.available ? "text-ink" : "text-ink-2"}`}>Tradução {l.label}</span>
+                  {l.available ? (
+                    <span className="serif num shrink-0 text-[1.1875rem] leading-none text-ink">{brl(l.priceBrl)}</span>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-1 text-[0.75rem] leading-none font-medium text-accent">
+                      Em breve
+                    </span>
+                  )}
                 </span>
-                <span className="mt-0.5 block text-[0.875rem] leading-relaxed text-muted">{l.description}</span>
+                <span className={`mt-1 block text-[0.875rem] leading-relaxed ${l.available ? "text-ink-2" : "text-muted"}`}>{l.description}</span>
               </span>
             </button>
           );
         })}
       </div>
 
-      {/* ---------- amostra grátis ---------- */}
+      {/* ---------- amostra grátis: ver o resultado antes de decidir ---------- */}
       <div id="amostra" className="scroll-mt-20">
+        {!sampleState && (
+          <div className="mt-6 rounded-[1.25rem] border border-rule px-5 py-5 sm:flex sm:items-center sm:justify-between sm:gap-6 sm:px-6">
+            <div>
+              <p className="serif text-[1.25rem] leading-snug text-ink">Quer ler antes de decidir?</p>
+              <p className="mt-1 text-[0.875rem] leading-relaxed text-ink-2">Um trecho do começo do livro, já traduzido, com o original ao lado.</p>
+            </div>
+            <Button variant="secondary" onClick={sample} disabled={!!busy} className="mt-4 w-full sm:mt-0 sm:w-auto sm:shrink-0">
+              {busy === "sample" ? "Preparando a amostra…" : "Ver uma amostra grátis"}
+            </Button>
+          </div>
+        )}
         <SampleView book={book} />
       </div>
 
       {/* ---------- total, incluído e ação ---------- */}
       <div className="mt-8 rounded-[1.25rem] bg-paper-2 px-5 py-5 sm:px-6">
-        <div className="flex items-baseline justify-between gap-4">
-          <span className="text-[1rem] text-ink">Tradução completa</span>
-          <span className="serif num text-[1.75rem] leading-none text-ink">{brl(chosen.priceBrl)}</span>
+        <p className="label">Sua nova edição</p>
+        <div className="mt-2 flex items-baseline justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[1rem] text-ink">Tradução {chosen.label}</p>
+            <p className="mt-0.5 text-[0.8125rem] text-muted">{languageLabel(target)} · EPUB e PDF</p>
+          </div>
+          <span className="serif num shrink-0 text-[1.875rem] leading-none text-ink">{brl(chosen.priceBrl)}</span>
         </div>
-        <p className="label mt-5">Incluído</p>
-        <ul className="mt-2.5 grid gap-x-4 gap-y-1.5 sm:grid-cols-2">
+        <ul className="mt-4 grid gap-x-4 gap-y-1.5 border-t border-rule pt-4 sm:grid-cols-2">
           {INCLUDED.map((item) => (
             <li key={item} className="flex items-center gap-2.5 text-[0.9375rem] text-ink-2">
               <Check className="h-4 w-4 shrink-0 text-ok" />
@@ -219,7 +259,7 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
 
       {beta && (
         <p className="mt-4 text-[0.9375rem] leading-relaxed text-ink-2">
-          <strong className="font-medium text-ink">Grátis durante o beta.</strong> Enquanto o Verso está em testes, você não paga nada.
+          <strong className="font-medium text-ink">Grátis durante o beta.</strong> Enquanto o Verso está em testes, sua tradução sai sem custo.
         </p>
       )}
       <Button onClick={order} size="lg" disabled={!!busy || !chosen.available || !canPay || sampleState === "running"} className="mt-5 w-full">
@@ -228,15 +268,15 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
           : !canPay
             ? "Pagamentos em breve"
             : beta
-              ? "Traduzir grátis"
-              : `Pagar e traduzir · ${brl(chosen.priceBrl)}`}
+              ? "Começar tradução — grátis no beta"
+              : `Começar tradução · ${brl(chosen.priceBrl)}`}
         {busy !== "order" && canPay && <ArrowRight />}
       </Button>
       <p className="mt-3 text-center text-[0.8125rem] leading-relaxed text-muted">
         {beta
           ? "A tradução começa assim que você confirmar."
           : canPay
-            ? "Pagamento único, sem assinatura e sem cobrança automática."
+            ? "O valor é pago na próxima etapa. Sem assinatura."
             : "Estamos preparando os pagamentos. Volte em breve."}
       </p>
       <p className="mt-1 text-center text-[0.8125rem] leading-relaxed text-muted">
@@ -250,15 +290,6 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
         </Link>
         .
       </p>
-      {!sampleState && (
-        <button
-          onClick={sample}
-          disabled={!!busy}
-          className="link mx-auto mt-5 block py-1 text-center text-[0.9375rem] text-ink-2 hover:text-ink disabled:opacity-50"
-        >
-          {busy === "sample" ? "Pedindo a amostra…" : "Ver uma amostra grátis antes"}
-        </button>
-      )}
 
       {/* ---------- preferências ---------- */}
       <div className="mt-8 border-t border-rule">
@@ -268,7 +299,9 @@ export function OrderPanel({ book, onChange }: { book: BookView; onChange: (b: B
           className="flex w-full items-center justify-between py-4 text-left text-[0.9375rem] text-ink-2 hover:text-ink"
           aria-expanded={prefsOpen}
         >
-          Preferências de tradução <span className="text-muted">(opcional)</span>
+          <span>
+            Preferências de tradução <span className="text-muted">(opcional)</span>
+          </span>
           <Chevron className={`h-4 w-4 transition-transform duration-300 ${prefsOpen ? "rotate-180" : ""}`} />
         </button>
         {prefsOpen && (

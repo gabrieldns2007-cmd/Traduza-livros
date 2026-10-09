@@ -1,15 +1,15 @@
-import Link from "next/link";
 import { LANGUAGES } from "@/lib/languages";
 import { OPERATIONS, priceFor, SERVICE_LEVELS } from "@/lib/billing/pricing";
 import { brl } from "@/lib/money";
-import { Check } from "@/components/ui/icons";
+import { ArrowRight, Check } from "@/components/ui/icons";
+import { ButtonLink } from "@/components/ui/button";
 import { Faq } from "@/components/commerce/faq";
 import { UploadCta } from "./upload-cta";
 
 const STEPS: [string, string][] = [
   ["Envie o livro", "Um arquivo EPUB ou PDF, do celular ou do computador."],
-  ["Escolha o idioma", "E veja o preço na hora. Se quiser, peça antes uma amostra grátis."],
-  ["Receba o livro traduzido", "Em EPUB e PDF, com os capítulos e a formatação do original."],
+  ["Escolha o idioma", "O valor aparece na hora, antes de continuar. Se quiser, leia antes uma amostra grátis."],
+  ["Receba sua nova edição", "Em EPUB e PDF, com os capítulos e a formatação do original."],
 ];
 
 const STRUCTURE = [
@@ -22,7 +22,7 @@ const STRUCTURE = [
 ];
 
 const EXAMPLES: [string, number][] = [
-  ["Conto", 8_000],
+  ["Conto", 10_000],
   ["Romance", 80_000],
   ["Livro longo", 150_000],
 ];
@@ -38,8 +38,9 @@ function Section({ title, children, className = "" }: { title: string; children:
 
 /**
  * Página inicial do serviço: explica em segundos o que é, como funciona e
- * quanto custa, com um único botão de ação. Sem urgência falsa, sem letras
- * miúdas: o preço aparece antes de qualquer pagamento.
+ * quanto custa, com um único botão de ação. Fala do livro que a pessoa vai
+ * ler, não da compra — mas sem esconder nada: o valor aparece antes de
+ * continuar.
  */
 export function Landing({ targetLanguage, maxUploadMb, literaria }: { targetLanguage: string; maxUploadMb: number; literaria: boolean }) {
   const levels = SERVICE_LEVELS.filter((l) => l.id === "padrao" || literaria);
@@ -55,7 +56,10 @@ export function Landing({ targetLanguage, maxUploadMb, literaria }: { targetLang
           <UploadCta targetLanguage={targetLanguage} maxUploadMb={maxUploadMb} />
         </div>
         <p className="mt-4 text-[0.875rem] leading-relaxed text-muted">
-          EPUB ou PDF · preço na hora, antes de pagar · a partir de {brl(OPERATIONS.minimumBrl)}
+          EPUB ou PDF · a partir de {brl(OPERATIONS.minimumBrl)}
+          <br className="sm:hidden" />
+          <span className="hidden sm:inline"> · </span>
+          Você vê o valor antes de continuar.
         </p>
       </section>
 
@@ -141,7 +145,7 @@ export function Landing({ targetLanguage, maxUploadMb, literaria }: { targetLang
       {/* ---------- preço ---------- */}
       <Section title="Preço">
         <p className="mt-4 text-[0.9375rem] leading-relaxed text-ink-2">
-          Você paga pela tradução do livro, conforme o tamanho. O valor exato aparece antes de qualquer pagamento.
+          Um valor único por livro, calculado pelo tamanho. Você vê o valor exato antes de continuar.
         </p>
         <div className="mt-6 overflow-hidden rounded-[1.25rem] border border-rule">
           <table className="num w-full text-[0.9375rem]">
@@ -173,12 +177,12 @@ export function Landing({ targetLanguage, maxUploadMb, literaria }: { targetLang
           </table>
         </div>
         <p className="mt-3 text-[0.875rem] leading-relaxed text-ink-2">
-          Pagamento único. Sem assinatura, sem cobrança automática, sem taxas escondidas.
+          Sem assinatura, sem cobranças recorrentes, sem taxas escondidas.
           {!literaria && " Tradução Literária: em breve."}
         </p>
-        <Link href="/precos" className="link mt-4 inline-block text-[0.9375rem] text-ink">
-          Calcular o preço do meu livro →
-        </Link>
+        <ButtonLink href="/precos" variant="secondary" className="mt-6 w-full sm:w-auto">
+          Calcular o valor do meu livro <ArrowRight />
+        </ButtonLink>
       </Section>
 
       <Section title="Perguntas frequentes">
@@ -190,7 +194,7 @@ export function Landing({ targetLanguage, maxUploadMb, literaria }: { targetLang
       {/* ---------- fim ---------- */}
       <section className="mt-20 rounded-[1.5rem] bg-paper-2 px-6 py-10 text-center sm:px-10">
         <h2 className="serif text-[1.9rem] leading-tight tracking-[-0.02em] text-ink">Pronto para ler no seu idioma?</h2>
-        <p className="mt-2 text-[0.9375rem] text-ink-2">Envie o livro e veja o preço. Você só paga se quiser seguir.</p>
+        <p className="mt-2 text-[0.9375rem] text-ink-2">Envie o livro, leia uma amostra e veja o valor. Você decide se quer seguir.</p>
         <div className="mt-7 flex justify-center">
           <UploadCta targetLanguage={targetLanguage} maxUploadMb={maxUploadMb} />
         </div>
