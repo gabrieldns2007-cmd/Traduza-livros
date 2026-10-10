@@ -1,5 +1,5 @@
 import type { BookStatus, BookSummary } from "@/types/book";
-import { STATUS_LABEL, isActive } from "@/lib/format";
+import { isActive } from "@/lib/format";
 import { languageLabel } from "@/lib/languages";
 
 /**
@@ -8,11 +8,26 @@ import { languageLabel } from "@/lib/languages";
  * livro tem sempre a mesma cara, no servidor e no navegador.
  */
 
+/** Pausada só à espera da vez (cota do serviço): continua sozinha, o cliente não precisa fazer nada. */
+export function waitingTurn(book: BookSummary) {
+  return book.status === "paused" && book.stopCode === "waiting";
+}
+
+/** O livro anda sozinho (a estante continua se atualizando enquanto houver um assim). */
+export function inMotion(book: BookSummary) {
+  return isActive(book.status) || waitingTurn(book);
+}
+
 /* ---------- título e ordem ---------- */
 
 /** Título mostrado: o traduzido quando o livro está pronto. */
 export function displayTitle(book: BookSummary) {
   return book.status === "done" && book.translatedTitle ? book.translatedTitle : book.title;
+}
+
+/** Espaço inseparável antes da pontuação alta (“tome premier : Fantine”): a linha nunca começa por “:”. */
+export function typeset(title: string) {
+  return title.replace(/\s+([:;?!»])/g, "\u00a0$1").replace(/«\s+/g, "«\u00a0");
 }
 
 /** Quem pede atenção fica no alto: traduzindo, preparando, na fila, parados, não iniciados e, por fim, prontos. */
@@ -78,20 +93,22 @@ export const BINDINGS: Binding[] = [
 ];
 
 /**
- * Um tecido para cada livro da lista, na ordem da estante: escolhido pelo id
- * e trocado quando cairia na mesma família de cor do vizinho (lado a lado
- * nunca o mesmo tom). Só contam os vizinhos com capa tipográfica.
+ * Um tecido para cada livro: escolhido pelo id e trocado quando cairia na
+ * mesma família de cor de um dos dois livros de capa tipográfica enviados
+ * logo antes. A escolha segue a ordem de envio, que nunca muda: um livro novo
+ * entra no fim e nenhum livro troca de cor quando outro muda de situação.
  */
 export function assignBindings(books: BookSummary[]): Map<string, Binding> {
   const out = new Map<string, Binding>();
-  let prev: Binding | null = null;
-  for (const book of books) {
+  const byAge = [...books].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  let recent: Binding["family"][] = [];
+  for (const book of byAge) {
     const h = hash(book.id);
     const step = 1 + ((h >>> 8) % (BINDINGS.length - 1));
     let i = h % BINDINGS.length;
-    for (let tries = 0; prev && BINDINGS[i].family === prev.family && tries < BINDINGS.length; tries++) i = (i + step) % BINDINGS.length;
+    for (let tries = 0; recent.includes(BINDINGS[i].family) && tries < BINDINGS.length; tries++) i = (i + step) % BINDINGS.length;
     out.set(book.id, BINDINGS[i]);
-    prev = book.hasCover ? null : BINDINGS[i];
+    if (!book.hasCover) recent = [BINDINGS[i].family, recent[0]];
   }
   return out;
 }
@@ -121,8 +138,9 @@ export function titleFit(title: string): "normal" | "long" | "xlong" {
 
 /** Título da capa tipográfica: títulos enormes terminam em “…” numa palavra inteira (o título completo fica no painel). */
 export function coverTitle(title: string, max = 78) {
-  if (title.length <= max) return title;
-  const cut = title.slice(0, max);
+  const text = typeset(title);
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max);
   const space = cut.lastIndexOf(" ");
   return `${(space > max * 0.6 ? cut.slice(0, space) : cut).replace(/[\s,;:.\-–—]+$/, "")}…`;
 }
@@ -168,6 +186,7 @@ export function edgeTone(r: number, g: number, b: number): EdgeTone {
 export type ShelfStatus = {
   /** texto curto da etiqueta (sempre cabe num lugar de ~100 px) */
   text: string;
+  /** quiet: espera o cliente (anel vazado em vez do ponto) */
   tone: "live" | "calm" | "alert" | "quiet" | "done";
   /** ponto pulsando: só enquanto traduz de verdade */
   pulse: boolean;
@@ -186,24 +205,25 @@ export function shelfStatus(book: BookSummary): ShelfStatus {
     case "queued":
       return { text: "Na fila", tone: "calm", pulse: false, meter: percent > 0, percent };
     case "paused":
-      return { text: "Pausado", tone: "calm", pulse: false, meter: true, percent };
+      return { text: waitingTurn(book) ? "Na fila" : "Pausado", tone: "calm", pulse: false, meter: true, percent };
     case "error":
       return { text: "Interrompido", tone: "alert", pulse: false, meter: percent > 0, percent };
     case "ready":
-      return { text: "Não iniciado", tone: "quiet", pulse: false, meter: false, percent: 0 };
+      return { text: "A começar", tone: "quiet", pulse: false, meter: false, percent: 0 };
     case "done":
       return { text: "Pronto", tone: "done", pulse: false, meter: false, percent: 100 };
   }
 }
 
-export type Action = { label: string; href: string };
+/** `resume`: o botão retoma a tradução ali mesmo (e depois abre a página do livro). */
+export type Action = { label: string; href: string; resume?: boolean };
 
 /** Ação principal de cada situação — sempre um botão de verdade. */
 export function primaryAction(book: BookSummary): Action {
   if (book.status === "done") return { label: "Ler e revisar", href: `/livros/${book.id}/revisar/1` };
   if (book.status === "ready") return { label: "Começar tradução", href: `/livros/${book.id}` };
-  if (isActive(book.status)) return { label: "Acompanhar", href: `/livros/${book.id}` };
-  return { label: "Continuar", href: `/livros/${book.id}` };
+  if (inMotion(book)) return { label: "Acompanhar", href: `/livros/${book.id}` };
+  return { label: "Continuar", href: `/livros/${book.id}`, resume: true };
 }
 
 /** “Inglês → Português (Brasil)”. */
@@ -215,7 +235,7 @@ export function languagesOf(book: BookSummary, arrow = " → ") {
 export function bookAria(book: BookSummary) {
   const st = shelfStatus(book);
   const progress = st.meter && book.status !== "done" ? `, ${st.percent}%` : "";
-  return `${displayTitle(book)}${book.author ? `, de ${book.author}` : ""}. ${STATUS_LABEL[book.status]}${progress}. ${languagesOf(book, " para ")}. Ver detalhes e ações.`;
+  return `${displayTitle(book)}${book.author ? `, de ${book.author}` : ""}. ${st.text}${progress}. ${languagesOf(book, " para ")}. Ver detalhes e ações.`;
 }
 
 /** Contagem do cabeçalho. */
@@ -226,19 +246,18 @@ export function countLine(n: number) {
 
 export type SummaryPart = { key: string; text: string; live?: boolean };
 
-/** Linha de resumo: “● 1 traduzindo agora · 1 pausado · 1 pronto para ler”. */
-export function summaryOf(books: BookSummary[]): SummaryPart[] {
-  const n = (s: BookStatus[]) => books.filter((b) => s.includes(b.status)).length;
-  const parts: SummaryPart[] = [];
-  const translating = n(["translating"]);
-  const waiting = n(["queued", "analyzing"]);
-  const paused = n(["paused"]);
-  const stopped = n(["error"]);
-  const done = n(["done"]);
-  if (translating) parts.push({ key: "translating", text: `${translating} traduzindo agora`, live: true });
-  if (waiting) parts.push({ key: "waiting", text: `${waiting} na fila` });
-  if (paused) parts.push({ key: "paused", text: paused === 1 ? "1 pausado" : `${paused} pausados` });
-  if (stopped) parts.push({ key: "error", text: stopped === 1 ? "1 interrompido" : `${stopped} interrompidos` });
-  if (done) parts.push({ key: "done", text: done === 1 ? "1 pronto para ler" : `${done} prontos para ler` });
-  return parts;
+/** Linha de resumo, na ordem da estante: “● 1 traduzindo agora · 1 pausado · 1 esperando você · 1 pronto para ler”. */
+export function shelfSummary(books: BookSummary[]): SummaryPart[] {
+  const count = (test: (b: BookSummary) => boolean) => books.filter(test).length;
+  const of = (n: number, one: string, many = one) => (n === 1 ? `1 ${one}` : `${n} ${many}`);
+  const groups: [key: string, n: number, text: (n: number) => string][] = [
+    ["translating", count((b) => b.status === "translating"), (n) => `${n} traduzindo agora`],
+    ["analyzing", count((b) => b.status === "analyzing"), (n) => `${n} preparando`],
+    ["queued", count((b) => b.status === "queued" || waitingTurn(b)), (n) => `${n} na fila`],
+    ["paused", count((b) => b.status === "paused" && !waitingTurn(b)), (n) => of(n, "pausado", "pausados")],
+    ["error", count((b) => b.status === "error"), (n) => of(n, "interrompido", "interrompidos")],
+    ["ready", count((b) => b.status === "ready"), (n) => `${n} esperando você`],
+    ["done", count((b) => b.status === "done"), (n) => of(n, "pronto para ler", "prontos para ler")],
+  ];
+  return groups.filter(([, n]) => n > 0).map(([key, n, text]) => ({ key, text: text(n), ...(key === "translating" ? { live: true } : {}) }));
 }

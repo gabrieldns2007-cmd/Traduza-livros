@@ -21,7 +21,7 @@ export function SiteHeader() {
   return (
     <header className="mx-auto flex w-full max-w-5xl items-center justify-between px-5 pt-[max(1.1rem,env(safe-area-inset-top))] pb-4 sm:px-8 sm:pt-7">
       <Wordmark />
-      <nav className="flex items-center gap-1 text-[0.875rem] sm:gap-2">
+      <nav className="flex items-center gap-1 text-[0.875rem] max-[300px]:gap-0 sm:gap-2">
         {LINKS.map((l) => {
           const active = l.match(pathname);
           return (
@@ -29,7 +29,7 @@ export function SiteHeader() {
               key={l.href}
               href={l.href}
               aria-current={active ? "page" : undefined}
-              className={`rounded-full px-3 py-2 transition-colors active:bg-paper-2 ${active ? "text-ink" : "text-muted hover:text-ink"} ${l.href === "/" ? "hidden sm:inline-block" : ""}`}
+              className={`min-h-11 flex-col justify-center rounded-full px-3 transition-colors active:bg-paper-2 max-[300px]:px-2 ${active ? "text-ink" : "text-muted hover:text-ink"} ${l.href === "/" ? "hidden sm:inline-flex" : "inline-flex"}`}
             >
               <span className="sm:hidden">{l.short}</span>
               <span className="hidden sm:inline">{l.label}</span>

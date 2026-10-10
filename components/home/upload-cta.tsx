@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { ArrowRight } from "@/components/ui/icons";
-import { uploadWithProgress } from "./translate-flow";
+import { uploadWithProgress } from "@/lib/upload";
 
 /**
  * “Traduzir meu livro”: um botão só. Abre o seletor de arquivo, envia e leva

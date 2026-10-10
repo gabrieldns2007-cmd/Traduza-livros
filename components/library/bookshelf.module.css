@@ -27,11 +27,18 @@
   --page-edge: #e2d9c6;
   --wire: #c9bfac;
   --ghost-line: #c4b9a4;
-  --veil: rgba(52, 40, 22, 0.16);
+  --veil: rgba(40, 30, 18, 0.38);
   --sheet: var(--paper);
   --sheet-edge: var(--rule);
   --sheet-shadow: rgba(40, 30, 18, 0.22);
   --hero-shadow: rgba(45, 30, 12, 0.34);
+}
+
+/* no claro, o cinza da página fica claro demais sobre a parede da estante: um tom abaixo (≥ 4,5:1) */
+@media not (prefers-color-scheme: dark) {
+  .theme {
+    --muted: #6f695f;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -94,6 +101,8 @@
 .rig {
   position: absolute;
   inset: 0;
+}
+.flyer[data-flying] .rig {
   transform-style: preserve-3d;
 }
 
@@ -109,7 +118,6 @@
   border-radius: 1px 2.5px 2.5px 1px;
   background: var(--cloth);
   transform: var(--pose) translateZ(calc(var(--t) * 0.5));
-  transition: background-color 0.5s ease;
 }
 .front img {
   position: absolute;
@@ -150,7 +158,7 @@
   border-radius: 2px 1px 1px 2px;
   background: var(--spine);
   transform: var(--pose) rotateY(-90deg) translateZ(calc(var(--bw) * 0.5));
-  transition: background-color 0.5s ease;
+  transition: opacity 0.45s ease;
 }
 /* volume arredondado da lombada */
 .spine::before {
@@ -228,6 +236,12 @@
     linear-gradient(to bottom, var(--spine) 0 9%, transparent 9% 91%, var(--spine) 91%), linear-gradient(to right, var(--spine) 0 2%, transparent 2%),
     repeating-linear-gradient(to bottom, var(--page) 0 1px, var(--page-edge) 1px 1.6px);
   transform: var(--pose) rotateX(90deg) translateZ(calc(var(--bh) * 0.5));
+  transition: opacity 0.45s ease;
+}
+/* livro com capa: até a cor da capa ser lida, sem lombada nem topo (nunca uma cor que depois troca) */
+.scene[data-edge-pending] .spine,
+.scene[data-edge-pending] .top {
+  opacity: 0;
 }
 
 /* sombra projetada na parede (luz do alto à esquerda), só com gradiente */
@@ -327,6 +341,35 @@
 .typoMark span {
   color: var(--rule);
 }
+/* no original, o idioma em versalete no pé (o selo “Verso.” é da nova edição) */
+.typoLang {
+  flex: none;
+  max-width: 100%;
+  overflow: hidden;
+  margin-top: auto;
+  padding-top: 2cqi;
+  font-family: var(--font-sans);
+  font-size: max(5.5px, 6cqi);
+  letter-spacing: 0.16em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+/* na estante a capa é pequena: piso no tamanho das letras; o autor sai quando não cabe legível (fica no painel) */
+.sceneShelf .typoTitle {
+  font-size: max(10.5px, 12.5cqi);
+}
+.sceneShelf .typoTitle[data-fit="long"],
+.sceneShelf .typoTitle[data-fit="xlong"] {
+  --lines: 5;
+  font-size: max(9.5px, 10cqi);
+}
+@container (max-width: 112px) {
+  .sceneShelf .typoAuthor {
+    display: none;
+  }
+}
 
 /* livro desenhado em linhas (estante vazia) */
 .wire .face {
@@ -363,6 +406,16 @@
   margin-top: 9px;
   background: var(--accent);
   opacity: 0.75;
+}
+.wirePlus {
+  position: absolute;
+  top: 34%;
+  left: 50%;
+  width: 24%;
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  color: var(--muted);
+  transition: color 0.2s ease;
 }
 
 /* ------------------------------------------------------------------ */
@@ -532,6 +585,9 @@
   align-items: flex-end;
   justify-content: center;
   padding: 1.375rem 0 0.375rem;
+  /* livros fora da tela não são desenhados (nem viram camadas de GPU); a altura reservada é a de um livro */
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto calc(min(var(--slot-w) * 0.74, 8.25rem) * 1.5 + 1.75rem);
 }
 .lift {
   position: relative;
@@ -558,6 +614,8 @@
   transition:
     opacity 0.45s ease,
     transform 0.5s var(--ease-out-soft);
+  animation: tag-in 0.7s ease-out backwards;
+  animation-delay: calc(var(--i, 0) * 50ms + 60ms);
 }
 
 /* resposta ao toque imediata (iOS precisa do touchstart no botão) */
@@ -625,6 +683,13 @@
   border-radius: 999px;
   background: var(--accent);
 }
+.tagRing {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+}
 .tagMeter {
   display: flex;
   width: min(100%, 6.25rem);
@@ -655,54 +720,41 @@
   color: var(--muted);
 }
 
-/* lugar livre no fim da última prateleira (só quando sobra espaço nela) */
-.ghostSlot .tag {
-  visibility: hidden;
-}
+/* lugar livre no fim da última prateleira (só quando sobra espaço nela): um livro em linhas com “+” */
 .ghostLink {
   display: flex;
   width: 100%;
   flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 0;
   border-radius: 0.75rem;
+  background: none;
+  font: inherit;
   color: var(--muted);
+  text-align: center;
+  touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
-.ghostBook {
-  display: flex;
-  width: min(calc(var(--slot-w) * 0.66), 7.5rem);
-  aspect-ratio: 1 / 1.48;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.5rem;
-  border: 1px dashed var(--ghost-line);
-  border-radius: 3px;
-  font-size: 0.78125rem;
-  line-height: 1.25;
-  transition:
-    border-color 0.2s ease,
-    color 0.2s ease,
-    transform 0.12s ease;
+.ghostLink .face {
+  transition: border-color 0.2s ease;
 }
-.ghostIcon {
-  display: flex;
-  width: 2rem;
-  height: 2rem;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--rule-strong);
-  border-radius: 999px;
-}
-.ghostLink:active .ghostBook {
-  transform: scale(0.97);
+.ghostLink:active .lift {
+  transform: translateY(-0.25rem) scale(0.985);
   transition-duration: 0.08s;
+}
+.ghostLink[data-busy] {
+  color: var(--ink-2);
 }
 @media (hover: hover) {
   .ghostLink:hover {
-    color: var(--ink);
+    color: var(--ink-2);
   }
-  .ghostLink:hover .ghostBook {
-    border-color: var(--ink-2);
+  .ghostLink:hover .face {
+    border-color: var(--rule-strong);
+  }
+  .ghostLink:hover .wirePlus {
+    color: var(--ink);
   }
 }
 .ghostSlot:nth-child(2n + 1) {
@@ -777,11 +829,12 @@
   position: absolute;
   inset: 0;
   background: var(--veil);
+  touch-action: manipulation;
 }
 
 .panel {
-  --hero-w: 6.375rem;
-  --poke: 2.375rem;
+  --hero-w: 7.5rem;
+  --poke: 3.5rem;
   position: absolute;
   left: 0;
   right: 0;
@@ -793,14 +846,14 @@
 }
 @media (max-height: 720px) {
   .panel {
-    --hero-w: 5.625rem;
-    --poke: 2.125rem;
+    --hero-w: 6.75rem;
+    --poke: 3.25rem;
   }
 }
 @media (min-width: 640px) {
   .panel {
-    --hero-w: 7.25rem;
-    --poke: 2.75rem;
+    --hero-w: 9rem;
+    --poke: 4.5rem;
     bottom: 1.25rem;
     width: min(32rem, calc(100% - 2.5rem));
     margin-inline: auto;
@@ -946,9 +999,25 @@
   border-bottom: 1px solid var(--rule);
   padding: 0.75rem 0;
 }
+.rowMeter {
+  position: relative;
+  padding-bottom: calc(0.75rem + 0.625rem + 3px);
+}
+.rowMeter .meter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.75rem;
+}
 @media (max-height: 720px) {
   .row {
     padding: 0.5625rem 0;
+  }
+  .rowMeter {
+    padding-bottom: calc(0.5625rem + 0.5rem + 3px);
+  }
+  .rowMeter .meter {
+    bottom: 0.5625rem;
   }
 }
 
@@ -956,15 +1025,9 @@
 .meter {
   position: relative;
   height: 3px;
-  margin-top: 0.625rem;
   overflow: hidden;
   border-radius: 999px;
   background: var(--rule);
-}
-@media (max-height: 720px) {
-  .meter {
-    margin-top: 0.5rem;
-  }
 }
 .meter > span {
   position: absolute;
@@ -984,9 +1047,46 @@
   left: 0;
   top: 0;
   z-index: 2;
-  visibility: hidden;
+  display: none;
   pointer-events: none;
   transform-origin: 0 0;
+}
+.flyer[data-flying] {
+  display: block;
+}
+
+/*
+ * Celular deitado (pouca altura): livro menor, título menor, e as ações
+ * grudadas no pé do painel; só o livro (e a alça) arrastam para fechar, o
+ * resto rola com o dedo. Depois das regras de largura, que valem também aqui.
+ */
+@media (max-height: 500px) {
+  .panel {
+    --hero-w: 4.5rem;
+    --poke: 1.5rem;
+  }
+  .head {
+    touch-action: pan-y;
+  }
+  .heroCell {
+    touch-action: none;
+  }
+  .sheetTitle {
+    font-size: 1.125rem;
+  }
+  .scroller {
+    padding-bottom: 0;
+  }
+  .actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    margin-inline: -1.5rem;
+    padding: 0.75rem 1.5rem max(1rem, env(safe-area-inset-bottom));
+    border-radius: 0 0 1.5rem 1.5rem;
+    background: var(--sheet);
+    box-shadow: 0 -1px 0 var(--rule);
+  }
 }
 
 /* navegadores sem unidades de contêiner (iOS antigo): tamanhos fixos, nada desaba */
@@ -996,9 +1096,6 @@
   }
   .contact {
     width: 6.5rem;
-  }
-  .ghostBook {
-    width: 5.5rem;
   }
   .typo {
     padding: 16% 11% 7% 13%;
@@ -1024,6 +1121,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .lift,
+  .contact,
   .tag,
   .emptyNote,
   .reveal {
@@ -1031,6 +1129,8 @@
   }
   .lift,
   .contact,
+  .spine,
+  .top,
   .tagBar > span,
   .meter > span,
   .hint {

@@ -294,6 +294,8 @@ export interface BookSummary {
   detectedLanguage?: string | null;
   targetLanguage: string;
   status: BookStatus;
+  /** motivo da pausa, só o código (ex.: "waiting" = continua sozinha quando houver cota) */
+  stopCode?: string;
   percent: number;
   chapters: number;
   words: number;

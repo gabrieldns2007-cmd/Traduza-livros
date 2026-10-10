@@ -2,6 +2,8 @@
 
 import { useState, type CSSProperties, type Ref } from "react";
 import type { BookSummary } from "@/types/book";
+import { languageLabel } from "@/lib/languages";
+import { Plus } from "@/components/ui/icons";
 import { coverTitle, displayTitle, edgeTone, shapeOf, thicknessOf, titleFit, type Binding, type EdgeTone } from "./book-look";
 import s from "./bookshelf.module.css";
 
@@ -40,7 +42,7 @@ function sampleEdge(img: HTMLImageElement): EdgeTone | null {
   }
 }
 
-/** Tom neutro enquanto a capa não carrega (ou se a leitura falhar). */
+/** Tom neutro se a leitura da capa falhar. */
 const NEUTRAL_EDGE: EdgeTone = { spine: "#3b3732", ink: "#efe8dc", rule: "#cdb27e", light: false };
 
 export type BookVariant = "shelf" | "hero";
@@ -75,6 +77,8 @@ export function BookObject({
   const [failed, setFailed] = useState(false);
   const [edge, setEdge] = useState<EdgeTone | null>(() => edges.get(book.id) ?? null);
   const withImage = book.hasCover && !failed;
+  // até ler a cor da capa, lombada e topo ficam invisíveis (nunca uma cor errada que depois troca)
+  const edgePending = withImage && !edge;
   const title = displayTitle(book);
   const shape = shapeOf(book);
   const thick = thicknessOf(book.words);
@@ -97,8 +101,8 @@ export function BookObject({
       if (known !== edge) setEdge(known);
       return;
     }
-    const tone = sampleEdge(img);
-    if (!tone) return;
+    if (!img.complete || !img.naturalWidth) return; // ainda carregando: o onLoad chama de novo
+    const tone = sampleEdge(img) ?? NEUTRAL_EDGE;
     edges.set(book.id, tone);
     setEdge(tone);
   };
@@ -127,14 +131,19 @@ export function BookObject({
             onError={() => setFailed(true)}
           />
         ) : (
-          <TypeCover book={book} title={title} />
+          <TypeCover book={book} title={title} shelf={variant === "shelf"} />
         )}
       </span>
     </>
   );
 
   return (
-    <span className={`${s.scene} ${variant === "hero" ? s.sceneHero : s.sceneShelf}`} style={style} data-book-scene={book.id}>
+    <span
+      className={`${s.scene} ${variant === "hero" ? s.sceneHero : s.sceneShelf}`}
+      style={style}
+      data-book-scene={book.id}
+      data-edge-pending={edgePending ? "" : undefined}
+    >
       <span className={s.cast} aria-hidden />
       {rigRef ? (
         <span ref={rigRef} className={s.rig}>
@@ -147,10 +156,18 @@ export function BookObject({
   );
 }
 
-/** Capa tipográfica da casa: moldura fina, título em serifa, filete, autor em itálico e o selo “Verso.”. */
-function TypeCover({ book, title }: { book: BookSummary; title: string }) {
-  const lang = book.status === "done" ? "pt-BR" : (book.sourceLanguage ?? book.detectedLanguage ?? undefined);
-  const text = coverTitle(title);
+/**
+ * Capa tipográfica da casa: moldura fina, título em serifa, filete e autor em
+ * itálico. No pé, o selo “Verso.” só na nova edição (livro pronto); o
+ * original leva o idioma em versalete, como o cartão do original em Preços.
+ */
+function TypeCover({ book, title, shelf }: { book: BookSummary; title: string; shelf: boolean }) {
+  const source = book.sourceLanguage ?? book.detectedLanguage ?? undefined;
+  const edition = book.status === "done";
+  const lang = edition && book.translatedTitle ? book.targetLanguage : source;
+  // na estante a capa é pequena: título mais curto (o completo fica no painel)
+  const text = coverTitle(title, shelf ? 48 : 78);
+  const origin = edition ? "" : languageLabel(source, "");
   return (
     <span className={s.typo} aria-hidden>
       <span className={s.typoTitle} data-fit={titleFit(text)} lang={lang}>
@@ -158,26 +175,39 @@ function TypeCover({ book, title }: { book: BookSummary; title: string }) {
       </span>
       <span className={s.typoRule} />
       {book.author && <span className={s.typoAuthor}>{book.author}</span>}
-      <span className={s.typoMark}>
-        Verso<span>.</span>
-      </span>
+      {edition ? (
+        <span className={s.typoMark}>
+          Verso<span>.</span>
+        </span>
+      ) : (
+        origin && <span className={s.typoLang}>{origin}</span>
+      )}
     </span>
   );
 }
 
-/** O livro desenhado em linhas finas: o lugar do primeiro livro na estante vazia. */
-export function WireBook() {
+/**
+ * O livro desenhado em linhas finas: o lugar do primeiro livro na estante
+ * vazia e, com `plus`, o lugar livre no fim da estante (“Novo livro”).
+ */
+export function WireBook({ plus = false }: { plus?: boolean }) {
   const style = { "--scale": 1, "--ratio": 1.5, "--thick": 0.16 } as CSSProperties;
   return (
     <span className={`${s.scene} ${s.sceneShelf} ${s.wire}`} style={style} aria-hidden>
       <span className={`${s.face} ${s.top}`} />
       <span className={`${s.face} ${s.spine}`} />
       <span className={`${s.face} ${s.front}`}>
-        <span className={s.wireLines}>
-          <span />
-          <span />
-          <span />
-        </span>
+        {plus ? (
+          <span className={s.wirePlus}>
+            <Plus className="h-full w-full" />
+          </span>
+        ) : (
+          <span className={s.wireLines}>
+            <span />
+            <span />
+            <span />
+          </span>
+        )}
       </span>
     </span>
   );

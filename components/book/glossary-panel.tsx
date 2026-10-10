@@ -121,7 +121,7 @@ export function GlossaryPanel({
             setEditing(null);
             setDraft({ term: "", translation: "", type: "character", note: "" });
           }}
-          className="link text-[0.8125rem] text-muted hover:text-ink"
+          className="link relative text-[0.8125rem] text-muted before:absolute before:-inset-x-2 before:-inset-y-3 before:content-[''] hover:text-ink"
         >
           Adicionar termo
         </button>

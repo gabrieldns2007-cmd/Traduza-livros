@@ -168,7 +168,7 @@ export function EditionConfigurator({ literariaAvailable, action }: { literariaA
         <div className="mt-5 border-t border-rule pt-4">
           <div className="flex items-baseline justify-between gap-4">
             <p className="text-[1rem] text-ink">Seu orçamento</p>
-            <p className="serif num shrink-0 text-[2.5rem] leading-none tracking-[-0.025em] text-ink" aria-live="polite">
+            <p className="serif num shrink-0 text-[2.5rem] leading-none tracking-[-0.025em] text-ink max-[300px]:text-[2.125rem]" aria-live="polite">
               <span key={`${level}-${kind.id}`} className={styles.settle}>
                 {brl(priceFor(words, chosen.id))}
               </span>
@@ -182,7 +182,7 @@ export function EditionConfigurator({ literariaAvailable, action }: { literariaA
         {action && <div className="mt-6 [&_button]:w-full">{action}</div>}
 
         <p className="mt-4 text-center text-[0.8125rem] leading-relaxed text-muted">
-          Você vê o valor exato antes de continuar.
+          Você verá o valor exato antes de continuar.
           <br />
           Sem assinatura · Sem cobranças recorrentes
         </p>

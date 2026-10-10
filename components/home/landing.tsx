@@ -59,7 +59,7 @@ export function Landing({ targetLanguage, maxUploadMb, literaria }: { targetLang
           EPUB ou PDF · a partir de {brl(OPERATIONS.minimumBrl)}
           <br className="sm:hidden" />
           <span className="hidden sm:inline"> · </span>
-          Você vê o valor antes de continuar.
+          Você verá o valor antes de continuar.
         </p>
       </section>
 
@@ -145,7 +145,7 @@ export function Landing({ targetLanguage, maxUploadMb, literaria }: { targetLang
       {/* ---------- preço ---------- */}
       <Section title="Preço">
         <p className="mt-4 text-[0.9375rem] leading-relaxed text-ink-2">
-          Um valor único por livro, calculado pelo tamanho. Você vê o valor exato antes de continuar.
+          Um valor único por livro, calculado pelo tamanho. Você verá o valor exato antes de continuar.
         </p>
         <div className="mt-6 overflow-hidden rounded-[1.25rem] border border-rule">
           <table className="num w-full text-[0.9375rem]">

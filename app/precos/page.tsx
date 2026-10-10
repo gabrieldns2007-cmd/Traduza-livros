@@ -27,7 +27,7 @@ const EDITION: [string, string][] = [
 function EditionPreview() {
   return (
     <figure className="rounded-[1.75rem] bg-paper-2 px-6 pt-9 pb-6 sm:pt-12 sm:pb-8">
-      <div className="relative mx-auto h-[14.5rem] w-[16rem]" aria-hidden>
+      <div className="relative mx-auto h-[14.5rem] w-[min(16rem,100%)]" aria-hidden>
         {/* original */}
         <div className="absolute top-5 left-1 flex h-[11.5rem] w-[7.75rem] -rotate-[7deg] flex-col rounded-[3px_9px_9px_3px] border border-rule-strong bg-paper-3 px-3.5 pt-4 pb-3.5 shadow-[0_10px_24px_-18px_rgba(0,0,0,0.5)]">
           <span className="text-[0.5rem] tracking-[0.16em] text-muted uppercase">Edith Marlow</span>

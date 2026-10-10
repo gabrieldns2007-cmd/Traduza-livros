@@ -128,7 +128,7 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
           {PUBLIC_MODE && book.provider && book.provider.id !== "demo" ? ` · ${book.provider.model}` : ""}
           {PUBLIC_MODE && book.usage.outputTokens > 0 ? ` · ${Math.round((book.usage.inputTokens + book.usage.outputTokens) / 1000)} mil tokens` : ""}
         </span>
-        <button onClick={remove} className="link hover:text-accent">
+        <button onClick={remove} className="link relative before:absolute before:-inset-x-2 before:-inset-y-3 before:content-[''] hover:text-accent">
           Excluir livro
         </button>
       </footer>

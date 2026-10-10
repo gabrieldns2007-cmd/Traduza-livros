@@ -7,42 +7,18 @@ import { api } from "@/lib/client";
 import { languageLabel } from "@/lib/languages";
 import { ButtonLink } from "@/components/ui/button";
 import { ArrowRight, Download } from "@/components/ui/icons";
+import { usePdfDownload } from "./use-pdf-download";
 
 export function DonePanel({ book, onChange, onRetry }: { book: BookView; onChange: (b: BookView) => void; onRetry: () => Promise<void> }) {
   const failed = book.chapters.reduce((s, c) => s + c.failedSegments, 0);
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(book.translatedTitle || book.title);
-  const [pdfState, setPdfState] = useState<"idle" | "loading" | "error">("idle");
-  const [pdfError, setPdfError] = useState("");
+  const pdf = usePdfDownload(book.id);
 
   const saveTitle = async () => {
     const { book: b } = await api<{ book: BookView }>(`/api/books/${book.id}`, { method: "PATCH", json: { translatedTitle: title } });
     onChange(b);
     setEditing(false);
-  };
-
-  // o PDF leva alguns segundos para ser gerado: mostra o andamento e trata erros
-  const downloadPdf = async () => {
-    setPdfState("loading");
-    setPdfError("");
-    try {
-      const res = await fetch(`/api/books/${book.id}/export/pdf`);
-      if (!res.ok) throw new Error(((await res.json().catch(() => ({}))) as { error?: string }).error ?? "Não foi possível gerar o PDF.");
-      const blob = await res.blob();
-      const name = /filename\*=UTF-8''([^;]+)/.exec(res.headers.get("content-disposition") ?? "")?.[1];
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = name ? decodeURIComponent(name) : "livro.pdf";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30_000);
-      setPdfState("idle");
-    } catch (err) {
-      setPdfError((err as Error).message);
-      setPdfState("error");
-    }
   };
 
   return (
@@ -79,7 +55,10 @@ export function DonePanel({ book, onChange, onRetry }: { book: BookView; onChang
               <p className="serif text-[1.45rem] leading-snug text-ink">{book.translatedTitle || book.title}</p>
               <p className="mt-0.5 text-[0.9375rem] text-ink-2">{languageLabel(book.targetLanguage)}</p>
             </div>
-            <button onClick={() => setEditing(true)} className="link shrink-0 text-[0.8125rem] text-muted hover:text-ink">
+            <button
+              onClick={() => setEditing(true)}
+              className="link relative shrink-0 text-[0.8125rem] text-muted before:absolute before:-inset-x-2 before:-inset-y-3 before:content-[''] hover:text-ink"
+            >
               Editar título
             </button>
           </div>
@@ -91,17 +70,20 @@ export function DonePanel({ book, onChange, onRetry }: { book: BookView; onChang
           <Download /> Baixar EPUB
         </ButtonLink>
         <button
-          onClick={downloadPdf}
-          disabled={pdfState === "loading"}
+          onClick={pdf.download}
+          disabled={pdf.loading}
           className="inline-flex h-12 w-full items-center justify-center gap-2 rounded-full border border-rule-strong px-7 text-[0.9375rem] font-medium text-ink transition-colors hover:border-ink disabled:opacity-60 sm:w-auto"
         >
-          <Download /> {pdfState === "loading" ? "Gerando PDF…" : "Baixar PDF"}
+          <Download /> {pdf.loading ? "Gerando PDF…" : "Baixar PDF"}
         </button>
       </div>
-      {pdfState === "error" && <p className="mt-3 text-[0.875rem] text-accent">{pdfError}</p>}
+      {pdf.error && <p className="mt-3 text-[0.875rem] text-accent">{pdf.error}</p>}
 
-      <Link href={`/livros/${book.id}/revisar/1`} className="group mt-7 inline-flex items-center gap-2 text-[1rem] text-ink">
-        <span className="serif text-[1.15rem] italic">Revisar tradução</span>
+      <Link
+        href={`/livros/${book.id}/revisar/1`}
+        className="group relative mt-7 inline-flex items-center gap-2 text-[1rem] text-ink before:absolute before:-inset-x-2 before:-inset-y-2 before:content-['']"
+      >
+        <span className="serif text-[1.15rem] italic">Ler e revisar</span>
         <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
       </Link>
 

@@ -1,14 +1,19 @@
 "use client";
 
-import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useEffect, useEffectEvent, useId, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { BookSummary } from "@/types/book";
-import { STATUS_LABEL, formatNumber, isActive } from "@/lib/format";
-import { ButtonLink } from "@/components/ui/button";
+import { formatNumber, isActive } from "@/lib/format";
+import { api } from "@/lib/client";
+import { PUBLIC_MODE } from "@/lib/mode";
+import { Button, ButtonLink } from "@/components/ui/button";
 import { ArrowRight, Check, Close, Download } from "@/components/ui/icons";
 import { LinkPending } from "@/components/ui/pending";
+import { usePdfDownload } from "@/components/book/use-pdf-download";
 import { BookObject } from "./book-object";
-import { displayTitle, languagesOf, primaryAction, shelfStatus, type Binding } from "./book-look";
+import { displayTitle, languagesOf, primaryAction, shelfStatus, typeset, waitingTurn, type Binding } from "./book-look";
 import s from "./bookshelf.module.css";
 
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)";
@@ -69,6 +74,7 @@ export function BookSheet({
   binding,
   closing,
   flight,
+  queueAhead,
   origin,
   onRequestClose,
   onClosed,
@@ -76,6 +82,8 @@ export function BookSheet({
   id: string;
   book: BookSummary;
   binding: Binding;
+  /** outro livro está sendo traduzido agora (este, na fila, começa depois dele) */
+  queueAhead: boolean;
   /** pedido de fechar já aceito: anima a saída e chama `onClosed` */
   closing: boolean;
   /** abrir com o voo a partir da estante */
@@ -95,6 +103,8 @@ export function BookSheet({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const closingRef = useRef(closing);
   closingRef.current = closing;
+  /** quando o painel abriu (o 2º clique de um clique duplo não pode fechá-lo) */
+  const openedAt = useRef(0);
 
   const requestClose = useEffectEvent(() => onRequestClose());
 
@@ -105,6 +115,8 @@ export function BookSheet({
     flyer.style.top = `${to.top}px`;
     flyer.style.setProperty("--hero-w", `${to.width}px`);
   };
+  /** O voador só existe (e só usa preserve-3d) durante o voo. */
+  const setFlying = (on: boolean) => flyerRef.current?.toggleAttribute("data-flying", on);
   const heroScene = () => heroRef.current?.querySelector<HTMLElement>("[data-book-scene]") ?? null;
 
   // abrir: trava o fundo, foca o título, e o livro sai da estante
@@ -115,6 +127,7 @@ export function BookSheet({
     const flyer = flyerRef.current!;
     const unlock = lockScroll();
     const restore = inertExcept(overlay);
+    openedAt.current = performance.now();
     headingRef.current?.focus({ preventScroll: true });
 
     const onKey = (e: KeyboardEvent) => {
@@ -143,7 +156,7 @@ export function BookSheet({
     const cleanup = () => {
       document.removeEventListener("keydown", onKey);
       running.forEach((a) => a.cancel());
-      flyer.style.visibility = "";
+      setFlying(false);
       flyer.style.transform = "";
       if (hero) hero.style.visibility = "";
       restore();
@@ -169,7 +182,7 @@ export function BookSheet({
       // o primeiro quadro já mostra o livro no lugar dele na estante
       flyer.style.transform = start;
       hero.style.visibility = "hidden";
-      flyer.style.visibility = "visible";
+      setFlying(true);
       const fly = flyer.animate(
         [
           { transform: start, easing: "cubic-bezier(0.3, 0.6, 0.4, 1)" },
@@ -188,7 +201,7 @@ export function BookSheet({
         .then(() => {
           if (closingRef.current) return;
           flyer.style.transform = "";
-          flyer.style.visibility = "hidden";
+          setFlying(false);
           hero.style.visibility = "";
         })
         .catch(() => {});
@@ -211,7 +224,7 @@ export function BookSheet({
     const flyer = flyerRef.current!;
     const hero = heroScene();
     // se ainda estava chegando, o livro volta de onde está agora
-    const from = flyer.style.visibility === "visible" ? flyer.getBoundingClientRect() : hero?.getBoundingClientRect();
+    const from = flyer.hasAttribute("data-flying") ? flyer.getBoundingClientRect() : hero?.getBoundingClientRect();
     const to = origin()?.getBoundingClientRect();
 
     const current = getComputedStyle(panel).transform;
@@ -229,7 +242,7 @@ export function BookSheet({
       flyer.style.transform = "";
       placeFlyer(from);
       hero.style.visibility = "hidden";
-      flyer.style.visibility = "visible";
+      setFlying(true);
       const k = to.width / from.width;
       landed = flyer.animate([{ transform: "none" }, { transform: `translate(${to.left - from.left}px, ${to.top - from.top}px) scale(${k})` }], {
         duration: 540,
@@ -295,15 +308,44 @@ export function BookSheet({
     if (reducedMotion()) clear();
   };
 
-  const title = displayTitle(book);
+  const title = typeset(displayTitle(book));
   const active = isActive(book.status);
   const st = shelfStatus(book);
   const action = primaryAction(book);
   const original = book.status === "done" && book.translatedTitle && book.translatedTitle !== book.title ? book.title : null;
+  const meter = st.meter && book.status !== "done";
+  const pdf = usePdfDownload(book.id);
+
+  // “Continuar” retoma a tradução ali mesmo e abre a página do livro (na versão pública, que pode pedir
+  // confirmação de custo, leva à página do livro)
+  const router = useRouter();
+  const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState("");
+  const resume = async () => {
+    setResuming(true);
+    setResumeError("");
+    try {
+      await api(`/api/books/${book.id}/translate`, { method: "POST", json: { action: "resume" } });
+      router.push(`/livros/${book.id}`);
+    } catch (err) {
+      setResumeError((err as Error).message);
+      setResuming(false);
+    }
+  };
+  const resumeHere = action.resume && !PUBLIC_MODE;
 
   return createPortal(
     <div ref={overlayRef} className={`${s.theme} ${s.overlay}`}>
-      <div ref={backdropRef} className={s.backdrop} onClick={onRequestClose} aria-hidden />
+      <div
+        ref={backdropRef}
+        className={s.backdrop}
+        onClick={(e) => {
+          // o 2º clique de um clique duplo no livro cai aqui: não fecha o que acabou de abrir
+          if (e.detail > 1 || performance.now() - openedAt.current < 400) return;
+          onRequestClose();
+        }}
+        aria-hidden
+      />
       <div ref={panelRef} id={id} role="dialog" aria-modal="true" aria-labelledby={titleId} className={s.panel}>
         <div className={s.sheetBg} aria-hidden />
         <div className={s.handle} aria-hidden />
@@ -330,13 +372,14 @@ export function BookSheet({
               >
                 {st.pulse && <span className="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-accent" aria-hidden />}
                 {book.status === "done" && <Check className="h-3.5 w-3.5" />}
-                {STATUS_LABEL[book.status]}
+                {st.tone === "quiet" && <span className={s.tagRing} aria-hidden />}
+                {st.text}
               </p>
               <h2
                 ref={headingRef}
                 id={titleId}
                 tabIndex={-1}
-                className="serif mt-1.5 text-[1.375rem] leading-[1.15] tracking-[-0.012em] text-balance text-ink outline-none [overflow-wrap:break-word] sm:text-[1.625rem] [@media(max-height:720px)]:text-[1.25rem]"
+                className={`${s.sheetTitle} serif mt-1.5 text-[1.375rem] leading-[1.15] tracking-[-0.012em] text-balance text-ink outline-none [overflow-wrap:break-word] sm:text-[1.625rem] [@media(max-height:720px)]:text-[1.25rem]`}
               >
                 {title}
               </h2>
@@ -354,43 +397,59 @@ export function BookSheet({
               <dt className="flex-none text-muted">Idiomas</dt>
               <dd className="min-w-0 text-right text-ink">{languagesOf(book)}</dd>
             </div>
-            <div className={s.row}>
-              <div className="flex items-baseline justify-between gap-4">
-                <dt className="flex-none text-muted">Progresso</dt>
-                <dd className="num min-w-0 text-right text-ink">
-                  <ProgressText book={book} percent={st.percent} />
-                </dd>
-              </div>
-              {st.meter && book.status !== "done" && (
-                <div
-                  className={`${s.meter} ${active ? "" : s.meterCalm}`}
-                  role="progressbar"
-                  aria-label="Progresso da tradução"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={st.percent}
-                >
-                  <span style={{ transform: `scaleX(${Math.max(0.01, st.percent / 100)})` }} />
-                </div>
-              )}
+            <div className={`${s.row} ${meter ? s.rowMeter : ""} flex items-baseline justify-between gap-4`}>
+              <dt className="flex-none text-muted">Progresso</dt>
+              <dd className="num min-w-0 text-right text-ink">
+                <ProgressText book={book} percent={st.percent} queueAhead={queueAhead} />
+                {meter && (
+                  <div
+                    className={`${s.meter} ${active ? "" : s.meterCalm}`}
+                    role="progressbar"
+                    aria-label="Progresso da tradução"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={st.percent}
+                  >
+                    <span style={{ transform: `scaleX(${Math.max(0.01, st.percent / 100)})` }} />
+                  </div>
+                )}
+              </dd>
             </div>
             <div className={`${s.row} flex items-baseline justify-between gap-4`}>
-              <dt className="flex-none text-muted">Extensão</dt>
+              <dt className="flex-none text-muted">Tamanho</dt>
               <dd className="num min-w-0 text-right text-ink-2">
                 <span className="whitespace-nowrap">
                   {book.chapters} {book.chapters === 1 ? "capítulo" : "capítulos"}
-                </span>{" "}
-                · <span className="whitespace-nowrap">{formatNumber(book.words)} palavras</span>
+                </span>
+                {/* telas estreitas: uma informação por linha, sem “·” pendurado */}
+                <span className="max-[359px]:hidden"> · </span>
+                <br className="min-[360px]:hidden" />
+                <span className="whitespace-nowrap">{formatNumber(book.words)} palavras</span>
               </dd>
             </div>
           </dl>
 
-          <div className={`mt-5 flex flex-col gap-2.5 ${s.reveal} ${s.reveal3} [@media(max-height:720px)]:mt-4 [@media(max-height:720px)]:gap-2`}>
-            <ButtonLink href={action.href} size="lg" className="relative w-full [@media(max-height:720px)]:h-12">
-              {action.label}
-              <ArrowRight />
-              <LinkPending className="absolute right-6" />
-            </ButtonLink>
+          <div
+            className={`${s.actions} mt-5 flex flex-col gap-2.5 ${s.reveal} ${s.reveal3} [@media(max-height:720px)]:mt-4 [@media(max-height:720px)]:gap-2`}
+          >
+            {resumeHere ? (
+              <Button size="lg" onClick={resume} disabled={resuming} className="w-full [@media(max-height:720px)]:h-12">
+                {resuming ? "Continuando…" : action.label}
+                {!resuming && <ArrowRight />}
+              </Button>
+            ) : (
+              <ButtonLink href={action.href} size="lg" className="relative w-full [@media(max-height:720px)]:h-12">
+                {action.label}
+                <ArrowRight />
+                <LinkPending className="absolute right-6" />
+              </ButtonLink>
+            )}
+            {resumeError && (
+              <p className="text-[0.875rem] text-accent" role="alert">
+                {resumeError}
+              </p>
+            )}
+            {book.status === "ready" && <p className="text-center text-[0.8125rem] text-muted">Você verá o valor antes de continuar.</p>}
             {book.status === "done" && (
               <div className="grid grid-cols-2 gap-2.5 [@media(max-height:720px)]:gap-2">
                 <ButtonLink
@@ -402,11 +461,35 @@ export function BookSheet({
                   <Download />
                   Baixar EPUB
                 </ButtonLink>
-                <ButtonLink href={`/livros/${book.id}`} variant="secondary" className="relative w-full !px-3 [@media(max-height:720px)]:h-11">
-                  Detalhes
-                  <LinkPending className="absolute right-4" />
-                </ButtonLink>
+                <Button
+                  variant="secondary"
+                  onClick={pdf.download}
+                  disabled={pdf.loading}
+                  className="w-full !px-3 disabled:!opacity-60 [@media(max-height:720px)]:h-11"
+                >
+                  {pdf.loading ? (
+                    "Gerando PDF…"
+                  ) : (
+                    <>
+                      <Download />
+                      Baixar PDF
+                    </>
+                  )}
+                </Button>
               </div>
+            )}
+            {pdf.error && (
+              <p className="text-[0.875rem] text-accent" role="alert">
+                {pdf.error}
+              </p>
+            )}
+            {(book.status === "done" || resumeHere) && (
+              <Link
+                href={`/livros/${book.id}`}
+                className="link mx-auto inline-flex min-h-11 items-center px-3 text-[0.875rem] text-ink-2 hover:text-ink"
+              >
+                Ver página do livro
+              </Link>
             )}
           </div>
         </div>
@@ -419,18 +502,19 @@ export function BookSheet({
   );
 }
 
-/** “21% · atualiza sozinho”, “Tradução completa”… */
-function ProgressText({ book, percent }: { book: BookSummary; percent: number }) {
+/** “21% · atualiza sozinho”, “Nova edição em EPUB e PDF”… */
+function ProgressText({ book, percent, queueAhead }: { book: BookSummary; percent: number; queueAhead: boolean }) {
   switch (book.status) {
     case "done":
       return (
-        <span className="inline-flex items-center gap-1.5 text-ok">
-          <Check className="h-4 w-4" />
-          Tradução completa
+        <span className="text-ok">
+          <Check className="mr-1.5 inline-block h-4 w-4 align-[-0.2em]" />
+          {/* quebra antes de “EPUB e PDF”, nunca deixa “PDF” sozinho na linha */}
+          Nova edição em EPUB&nbsp;e&nbsp;PDF
         </span>
       );
     case "ready":
-      return <span className="text-ink-2">Ainda não começou</span>;
+      return <span className="text-ink-2">Esperando você começar</span>;
     case "translating":
       return (
         <>
@@ -438,10 +522,28 @@ function ProgressText({ book, percent }: { book: BookSummary; percent: number })
         </>
       );
     case "queued":
-      return percent > 0 ? <>{percent}% · na fila</> : <span className="text-ink-2">Começa em instantes</span>;
+      // um livro por vez: se outro está traduzindo, este espera ele terminar
+      return percent > 0 ? (
+        <>{percent}% · na fila</>
+      ) : (
+        <span className="text-ink-2">{queueAhead ? "Começa após o livro atual" : "Começa em instantes"}</span>
+      );
     case "analyzing":
       return percent > 0 ? <>{percent}% · preparando</> : <span className="text-ink-2">Preparando o livro</span>;
     default:
-      return <>{percent}% traduzido</>;
+      if (waitingTurn(book))
+        return (
+          <>
+            {percent}% <span className="text-muted">· continua sozinha</span>
+          </>
+        );
+      // pausado ou interrompido: nada do que já foi traduzido se perde
+      return percent > 0 ? (
+        <>
+          {percent}% <span className="text-muted">· tudo salvo</span>
+        </>
+      ) : (
+        <>{percent}% traduzido</>
+      );
   }
 }

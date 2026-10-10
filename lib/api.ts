@@ -84,6 +84,7 @@ export function summaryOf(meta: BookMeta): BookSummary {
     detectedLanguage: meta.detectedLanguage,
     targetLanguage: meta.targetLanguage,
     status: meta.status,
+    stopCode: meta.status === "paused" ? meta.stopCode : undefined,
     percent: percentOf(meta),
     chapters: meta.totals.chapters,
     words: meta.totals.words,

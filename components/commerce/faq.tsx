@@ -12,7 +12,7 @@ export const FAQ: [string, string][] = [
     "Como é feito o orçamento?",
     "Seu orçamento é calculado com base no tamanho do livro (número de palavras) e no tipo de tradução. Você verá o valor exato antes de continuar — sem taxas escondidas.",
   ],
-  ["Preciso assinar alguma coisa?", "Não. Sem assinatura e sem cobranças recorrentes: cada livro tem um valor único, pago uma só vez."],
+  ["Preciso assinar alguma coisa?", "Não. Sem assinatura: cada livro tem um valor único, uma vez só."],
   [
     "Posso ver uma amostra antes de decidir?",
     "Sim, e é grátis. Depois de enviar o livro, peça uma amostra: um trecho do começo, com o original ao lado.",
@@ -23,7 +23,7 @@ export const FAQ: [string, string][] = [
   ],
   [
     "E se a tradução parar no meio?",
-    "Tudo o que já foi traduzido fica salvo, e ela continua do mesmo ponto. Nada é traduzido (nem cobrado) duas vezes.",
+    "Tudo o que já foi traduzido fica salvo, e ela continua do mesmo ponto. Nada é traduzido duas vezes, nem entra de novo no orçamento.",
   ],
   ["Posso corrigir alguma coisa?", "Pode. Na revisão, cada parágrafo traduzido aparece ao lado do original e pode ser editado antes de baixar."],
   [

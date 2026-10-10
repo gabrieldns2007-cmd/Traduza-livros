@@ -9,12 +9,14 @@ import {
   bookAria,
   coverTitle,
   edgeTone,
+  inMotion,
   primaryAction,
   shelfStatus,
+  shelfSummary,
   sortBooks,
-  summaryOf,
   thicknessOf,
   titleFit,
+  typeset,
 } from "@/components/library/book-look";
 
 let n = 0;
@@ -60,15 +62,32 @@ describe("ordem da estante", () => {
 });
 
 describe("tecidos e formato", () => {
-  it("vizinhos com capa tipográfica nunca têm a mesma família de cor", () => {
+  it("livros de capa tipográfica enviados em seguida nunca repetem a família de cor dos dois anteriores", () => {
     const list = Array.from({ length: 60 }, () => book("done"));
     const map = assignBindings(list);
-    for (let i = 1; i < list.length; i++) expect(map.get(list[i].id)!.family).not.toBe(map.get(list[i - 1].id)!.family);
+    for (let i = 1; i < list.length; i++) {
+      expect(map.get(list[i].id)!.family).not.toBe(map.get(list[i - 1].id)!.family);
+      if (i > 1) expect(map.get(list[i].id)!.family).not.toBe(map.get(list[i - 2].id)!.family);
+    }
+    // um livro com capa no meio não quebra a regra
+    const mixed = [book("done"), book("done", { hasCover: true }), book("done")];
+    const m = assignBindings(mixed);
+    expect(m.get(mixed[2].id)!.family).not.toBe(m.get(mixed[0].id)!.family);
   });
 
-  it("o mesmo livro tem sempre o mesmo tecido na mesma posição", () => {
-    const list = [book("done"), book("ready"), book("paused")];
-    expect([...assignBindings(list).values()]).toEqual([...assignBindings(list).values()]);
+  it("nenhum livro troca de cor quando outro muda de situação ou quando chega um livro novo", () => {
+    const statuses: BookStatus[] = ["translating", "queued", "paused", "ready", "error", "analyzing", "done", "ready", "translating", "done"];
+    const list = statuses.map((st) => book(st));
+    const before = assignBindings(sortBooks(list));
+    for (let i = 0; i < list.length; i++) {
+      for (const st of ["done", "paused", "translating"] as BookStatus[]) {
+        const changed = list.map((b, j) => (j === i ? { ...b, status: st } : b));
+        const after = assignBindings(sortBooks(changed));
+        for (const b of list) expect(after.get(b.id)).toBe(before.get(b.id));
+      }
+    }
+    const withNew = assignBindings(sortBooks([...list, book("ready", { createdAt: "2030-01-01T00:00:00Z" })]));
+    for (const b of list) expect(withNew.get(b.id)).toBe(before.get(b.id));
   });
 
   it("espessura segue o número de palavras, com mínimo e máximo", () => {
@@ -89,6 +108,12 @@ describe("tecidos e formato", () => {
     expect(cut.endsWith("…")).toBe(true);
     expect(long.startsWith(cut.slice(0, -1))).toBe(true);
     expect(coverTitle("Emma")).toBe("Emma");
+  });
+
+  it("pontuação alta francesa nunca começa uma linha", () => {
+    expect(typeset("Les Misérables, tome premier : Fantine")).toBe("Les Misérables, tome premier\u00a0: Fantine");
+    expect(typeset("« Bonjour »")).toBe("«\u00a0Bonjour\u00a0»");
+    expect(coverTitle("Les Misérables, tome premier : Fantine")).toContain("premier\u00a0:");
   });
 
   it("cor da lombada tirada da capa: capa clara continua clara, escura fica sóbria", () => {
@@ -122,18 +147,30 @@ describe("etiquetas e ações", () => {
     expect(primaryAction(book("translating")).label).toBe("Acompanhar");
     expect(primaryAction(book("queued")).label).toBe("Acompanhar");
     expect(primaryAction(book("analyzing")).label).toBe("Acompanhar");
-    expect(primaryAction(book("paused")).label).toBe("Continuar");
-    expect(primaryAction(book("error")).label).toBe("Continuar");
+    expect(primaryAction(book("paused"))).toMatchObject({ label: "Continuar", resume: true });
+    expect(primaryAction(book("error"))).toMatchObject({ label: "Continuar", resume: true });
+  });
+
+  it("pausado só à espera da vez: na fila, continua sozinho, sem pedir nada ao cliente", () => {
+    const waiting = book("paused", { stopCode: "waiting", percent: 53.4 });
+    expect(shelfStatus(waiting)).toMatchObject({ text: "Na fila", tone: "calm", meter: true, percent: 53 });
+    expect(primaryAction(waiting)).toEqual({ label: "Acompanhar", href: `/livros/${waiting.id}` });
+    expect(inMotion(waiting)).toBe(true);
+    expect(inMotion(book("paused"))).toBe(false);
+    expect(shelfSummary([waiting, book("queued"), book("paused")]).map((p) => p.text)).toEqual(["2 na fila", "1 pausado"]);
   });
 
   it("nome acessível diz o que é, como está, os idiomas e o que o toque faz", () => {
     const b = book("paused", { title: "Alice", author: "Lewis Carroll", percent: 53.4 });
     expect(bookAria(b)).toBe("Alice, de Lewis Carroll. Pausado, 53%. Inglês para Português (Brasil). Ver detalhes e ações.");
+    // o mesmo nome da etiqueta (“Pronto”), não “Concluído”
+    expect(bookAria(book("done", { title: "Emma" }))).toBe("Emma. Pronto. Inglês para Português (Brasil). Ver detalhes e ações.");
   });
 
-  it("linha de resumo do cabeçalho", () => {
-    const parts = summaryOf([book("translating"), book("paused"), book("done"), book("done"), book("ready")]);
-    expect(parts.map((p) => p.text)).toEqual(["1 traduzindo agora", "1 pausado", "2 prontos para ler"]);
+  it("linha de resumo do cabeçalho: todos os livros, com os nomes das etiquetas", () => {
+    const parts = shelfSummary([book("translating"), book("paused"), book("done"), book("done"), book("ready")]);
+    expect(parts.map((p) => p.text)).toEqual(["1 traduzindo agora", "1 pausado", "1 esperando você", "2 prontos para ler"]);
     expect(parts[0].live).toBe(true);
+    expect(shelfSummary([book("analyzing"), book("queued")]).map((p) => p.text)).toEqual(["1 preparando", "1 na fila"]);
   });
 });

@@ -19,10 +19,6 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1).replace(".", ",")} MB`;
 }
 
-export function formatDate(iso: string): string {
-  return new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
-}
-
 /** “VI” → “Capítulo VI”; títulos de verdade ficam como estão. */
 export function chapterLabel(title: string): string {
   const t = title.trim();
