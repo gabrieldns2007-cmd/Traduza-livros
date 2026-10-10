@@ -139,6 +139,10 @@ export interface TranslationRun {
   /** tempo de processamento (ms) */
   activeMs: number;
   requests: number;
+  /** desses pedidos, quantos foram refeitos (resposta cortada, trechos ou formatação perdidos) */
+  retryRequests?: number;
+  /** trechos resolvidos sem chamar o modelo (sem palavras, ou repetidos no mesmo lote) */
+  localSegments?: number;
   inputTokens: number;
   outputTokens: number;
   /** custo estimado pela tabela de preços (US$); null se o modelo não tem preço conhecido */

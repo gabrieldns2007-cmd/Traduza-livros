@@ -128,8 +128,9 @@ export class RunLedger {
   }
 
   /** Tokens de um pedido ao modelo. Pode lançar BillingStop se o gasto disparar sem progresso. */
-  async usage(u: { inputTokens: number; outputTokens: number }) {
+  async usage(u: { inputTokens: number; outputTokens: number }, info?: { retry?: boolean }) {
     this.run.requests++;
+    if (info?.retry) this.run.retryRequests = (this.run.retryRequests ?? 0) + 1;
     this.run.inputTokens += u.inputTokens;
     this.run.outputTokens += u.outputTokens;
     this.run.costUsd = usageCostUsd(this.run.model, this.run.inputTokens, this.run.outputTokens);
@@ -138,6 +139,12 @@ export class RunLedger {
     if (this.enforce && this.costBrl() > this.netBrl(this.run.credits.reservedMilli) * ECONOMICS.runCostCeiling + 0.05) {
       throw new BillingStop(MARGIN_MESSAGE, "margin");
     }
+  }
+
+  /** Trechos resolvidos sem chamar o modelo (só registro, para medir a economia). */
+  async local(segments: number) {
+    this.run.localSegments = (this.run.localSegments ?? 0) + segments;
+    await this.save();
   }
 
   /** Antes de enviar um lote: a reserva precisa cobrir as palavras dele. */

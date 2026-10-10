@@ -24,6 +24,11 @@ if (!fs.existsSync(booksDir)) {
   process.exit(0);
 }
 
+console.log(
+  "Tokens e pedidos são medidos. O valor em US$ é a tabela de preços PAGOS aplicada a esses tokens:\n" +
+    "nos serviços gratuitos ([byok]) o gasto real foi zero — o número mostra quanto custaria no nível pago.",
+);
+
 const usd = (v) => `US$ ${v.toFixed(v < 1 ? 4 : 2)}`;
 const byModel = new Map();
 let anyRun = false;
@@ -50,7 +55,10 @@ for (const id of fs.readdirSync(booksDir).sort()) {
     console.log(
       `  ${r.kind === "preview" ? "prévia   " : "tradução "} ${r.provider}/${r.model}  ${r.words} palavras  ` +
         `${r.inputTokens}+${r.outputTokens} tokens  ${r.costUsd === null ? "sem preço" : usd(cost)}  ` +
-        `(${usd(per1k)}/mil)  ${Math.round(r.activeMs / 1000)}s  ${r.chapters} cap.` +
+        `(${usd(per1k)}/mil)  ${r.requests ?? "?"} pedidos` +
+        (r.retryRequests ? ` (${r.retryRequests} refeitos)` : "") +
+        (r.localSegments ? `  ${r.localSegments} trechos sem chamada` : "") +
+        `  ${Math.round(r.activeMs / 1000)}s  ${r.chapters} cap.` +
         (r.billing === "hosted"
           ? `  cobrado: ${charged.toFixed(1)} créd.${margin !== null ? `  margem ≈ ${(margin * 100).toFixed(0)}%` : ""}`
           : `  [${r.billing}]`),

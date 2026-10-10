@@ -14,6 +14,17 @@ import { sleep } from "@/utils/async";
 
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
 
+/**
+ * Nível de raciocínio nos pedidos de TRADUÇÃO (opcional): GEMINI_THINKING_LEVEL=minimal|low|medium|high.
+ * O raciocínio é cobrado como saída e conta na cota; sem a variável, vale o padrão do modelo
+ * (nada muda). Teste a qualidade num trecho antes de baixar.
+ */
+export function geminiThinkingLevel(purpose: LLMRequest["purpose"], env = process.env.GEMINI_THINKING_LEVEL): string | undefined {
+  if (purpose !== "translation") return undefined;
+  const v = env?.trim().toLowerCase();
+  return v === "minimal" || v === "low" || v === "medium" || v === "high" ? v : undefined;
+}
+
 interface GeminiErrorBody {
   error?: { code?: number; status?: string; message?: string; details?: Array<Record<string, unknown>> };
 }
@@ -71,12 +82,14 @@ export class GeminiClient implements LLMClient {
   ) {}
 
   async complete(req: LLMRequest): Promise<LLMResponse> {
+    const thinkingLevel = geminiThinkingLevel(req.purpose);
     const body: Record<string, unknown> = {
       systemInstruction: { parts: [{ text: req.system }] },
       contents: [{ role: "user", parts: [{ text: req.user }] }],
       generationConfig: {
         maxOutputTokens: Math.min(req.maxTokens, 65536),
         ...(req.json ? { responseMimeType: "application/json" } : {}),
+        ...(thinkingLevel ? { thinkingConfig: { thinkingLevel } } : {}),
       },
     };
 

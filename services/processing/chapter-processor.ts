@@ -7,7 +7,12 @@
  *
  * Economia: cada pedido leva só o glossário relevante ao trecho, os últimos
  * resumos e 3 parágrafos anteriores; nomes novos vêm junto da tradução (sem
- * chamada extra por capítulo); nada já traduzido é reenviado.
+ * chamada extra por capítulo); nada já traduzido é reenviado. Além disso:
+ *  - trechos sem palavras (números, “* * *”, marcas de nota) ficam como estão,
+ *    sem ir ao modelo, e trechos idênticos no mesmo lote vão uma vez só;
+ *  - resposta cortada no limite de saída: os trechos que vieram completos são
+ *    aproveitados e só o resto é pedido de novo;
+ *  - erro temporário no meio de um lote: só o que ainda falta é reenviado.
  */
 import type { BookActivity, BookMeta, ChapterMeta, DocContent, Segment } from "@/types/book";
 import { store } from "@/lib/storage";
@@ -22,7 +27,10 @@ import { sleep } from "@/utils/async";
 export interface ProcessorHooks {
   /** chamado após cada lote gravado, por capítulo */
   onProgress: (chapterId: string, delta: { words: number; segments: number; failed: number }) => Promise<void>;
-  onUsage: (usage: { inputTokens: number; outputTokens: number }) => Promise<void>;
+  /** `retry`: pedido refeito (resposta cortada, trechos ou formatação perdidos) */
+  onUsage: (usage: { inputTokens: number; outputTokens: number }, info?: { retry?: boolean }) => Promise<void>;
+  /** trechos resolvidos sem chamar o modelo (sem palavras ou repetidos no lote) */
+  onLocal?: (segments: number) => Promise<void>;
   /** chamado quando todos os trechos de um capítulo estão gravados */
   onChapterSaved: (chapterId: string) => Promise<void>;
   /** serializa a análise opcional de capítulos */
@@ -171,6 +179,11 @@ export async function translateRange(
   }
 }
 
+/** Trecho que não tem o que traduzir: só números, pontuação, separadores ou marcas. */
+export function hasWords(src: string): boolean {
+  return /\p{L}/u.test(toPlainText(src));
+}
+
 async function translateBatch(bookId: string, batch: Item[], provider: TranslationProvider, hooks: ProcessorHooks) {
   const meta = (await store.get(bookId))!;
   const book = bookContext(meta);
@@ -201,6 +214,32 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
   const results = new Map<Item, string>();
   const failed = new Set<Item>();
 
+  // sem palavras: fica igual ao original; repetido no lote: vai ao modelo uma vez só
+  const toSend: Item[] = [];
+  const copyOf = new Map<Item, Item>();
+  const firstBySrc = new Map<string, Item>();
+  for (const it of batch) {
+    if (!hasWords(it.seg.src)) {
+      results.set(it, repairMarkup(it.seg.src, it.doc.tags, tagKeys(it.seg.src)).markup);
+      continue;
+    }
+    const first = firstBySrc.get(it.seg.src);
+    if (first) copyOf.set(it, first);
+    else {
+      firstBySrc.set(it.seg.src, it);
+      toSend.push(it);
+    }
+  }
+
+  /** Aceita a tradução de um trecho se ela veio inteira e com a formatação; senão devolve false. */
+  const accept = (it: Item, raw: string | undefined, strict: boolean): boolean => {
+    if (raw === undefined || (!raw.trim() && it.seg.src.trim())) return false;
+    const repaired = repairMarkup(raw, it.doc.tags, tagKeys(it.seg.src));
+    if (repaired.missing.length && !strict) return false;
+    results.set(it, repaired.missing.length ? appendMissingVoids(repaired.markup, repaired.missing, it.doc.tags) : repaired.markup);
+    return true;
+  };
+
   const attempt = async (its: Item[], strict: boolean, depth: number): Promise<void> => {
     const segments: BatchSegment[] = its.map((it) => ({ id: idOf.get(it)!, text: it.seg.src }));
     const chapterCount = new Set(its.map((it) => it.chapter.id)).size;
@@ -222,11 +261,25 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
         setTimeout(() => hooks.onActivity?.({ kind: "request", since: new Date().toISOString(), chapters: chapterCount }), ms).unref?.();
       },
     });
-    await hooks.onUsage(out.usage);
+    await hooks.onUsage(out.usage, { retry: strict || depth > 0 });
     if (out.newTerms?.length) await store.updateGlossary(bookId, (entries) => mergeCandidates(entries, out.newTerms!));
 
-    // resposta cortada ou recusada: divide o lote ao meio (com limite)
-    if ((out.truncated || out.refused) && its.length > 1 && depth < 4) {
+    // resposta cortada no limite de saída: aproveita os trechos que vieram completos
+    // e pede só o resto (em metades, se ainda for muito)
+    if (out.truncated && its.length > 1 && depth < 4) {
+      const rest = its.filter((it) => !accept(it, out.translations.get(idOf.get(it)!), strict));
+      if (!rest.length) return;
+      if (rest.length < its.length && rest.length <= Math.ceil(its.length / 2)) {
+        await attempt(rest, strict, depth + 1);
+        return;
+      }
+      const mid = Math.ceil(rest.length / 2);
+      await attempt(rest.slice(0, mid), strict, depth + 1);
+      await attempt(rest.slice(mid), strict, depth + 1);
+      return;
+    }
+    // recusada: divide o lote ao meio (com limite)
+    if (out.refused && its.length > 1 && depth < 4) {
       const mid = Math.ceil(its.length / 2);
       await attempt(its.slice(0, mid), strict, depth + 1);
       await attempt(its.slice(mid), strict, depth + 1);
@@ -235,19 +288,10 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
 
     const missing: Item[] = [];
     for (const it of its) {
-      const raw = out.translations.get(idOf.get(it)!);
-      if (raw === undefined || (!raw.trim() && it.seg.src.trim())) {
-        if (strict) failed.add(it);
-        else missing.push(it);
-        continue;
-      }
-      const repaired = repairMarkup(raw, it.doc.tags, tagKeys(it.seg.src));
-      // formatação perdida (itálico, notas…): uma nova tentativa, junto dos trechos que faltaram
-      if (repaired.missing.length && !strict) {
-        missing.push(it);
-        continue;
-      }
-      results.set(it, repaired.missing.length ? appendMissingVoids(repaired.markup, repaired.missing, it.doc.tags) : repaired.markup);
+      if (accept(it, out.translations.get(idOf.get(it)!), strict)) continue;
+      // faltou ou perdeu a formatação (itálico, notas…): uma nova tentativa, junto dos outros
+      if (strict) failed.add(it);
+      else missing.push(it);
     }
     // só esses trechos voltam, numa única chamada extra
     if (missing.length) await attempt(missing, true, depth + 1);
@@ -256,7 +300,9 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
   let transient = 0;
   for (;;) {
     try {
-      await attempt(batch, false, 0);
+      // numa nova tentativa depois de um erro temporário, só vai o que ainda falta
+      const pending = toSend.filter((it) => !results.has(it) && !failed.has(it));
+      if (pending.length) await attempt(pending, false, 0);
       break;
     } catch (err) {
       if (hooks.signal.aborted) throw err;
@@ -274,6 +320,15 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
   }
 
   hooks.onActivity?.(null);
+
+  // repetidos recebem a mesma tradução do primeiro
+  for (const [it, first] of copyOf) {
+    const t = results.get(first);
+    if (t !== undefined) results.set(it, t);
+    else if (failed.has(first)) failed.add(it);
+  }
+  const resolvedHere = batch.length - toSend.length;
+  if (resolvedHere) await hooks.onLocal?.(resolvedHere);
 
   // grava imediatamente, arquivo por arquivo (relê dentro do lock para não perder edições)
   const perChapter = new Map<string, { words: number; segments: number; failed: number }>();

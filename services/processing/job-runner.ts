@@ -209,7 +209,7 @@ class JobRunner {
           signal: controller.signal,
           analysisLock: (fn) => fn(),
           onChapterSaved: async () => {},
-          onUsage: async (usage) => {
+          onUsage: async (usage, info) => {
             await store.update(
               bookId,
               (m) => {
@@ -218,8 +218,9 @@ class JobRunner {
               },
               { persist: false },
             );
-            await ledger.usage(usage);
+            await ledger.usage(usage, info);
           },
+          onLocal: (segments) => ledger.local(segments),
           onProgress: async (chapterId, delta) => {
             await ledger.progress(delta);
             await store.update(bookId, (m) => {
@@ -381,7 +382,7 @@ class JobRunner {
     const hooks = {
       signal: inner.signal,
       analysisLock: <T>(fn: () => Promise<T>) => this.analysisMutex.run(`analysis:${bookId}`, fn),
-      onUsage: async (usage: { inputTokens: number; outputTokens: number }) => {
+      onUsage: async (usage: { inputTokens: number; outputTokens: number }, info?: { retry?: boolean }) => {
         if (!usage.inputTokens && !usage.outputTokens) return;
         await store.update(
           bookId,
@@ -391,8 +392,9 @@ class JobRunner {
           },
           { persist: false },
         );
-        await ledger.usage(usage);
+        await ledger.usage(usage, info);
       },
+      onLocal: (segments: number) => ledger.local(segments),
       beforeBatch: (words: number) => ledger.beforeBatch(words),
       onProgress: async (chapterId: string, delta: { words: number; segments: number; failed: number }) => {
         await store.update(bookId, (m) => {

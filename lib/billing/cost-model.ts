@@ -82,7 +82,13 @@ export function estimateCostUsd(providerId: string, model: string, words: number
   };
 }
 
-/** Custo por mil palavras (US$) — a unidade usada para precificar créditos. */
+/**
+ * Custo por mil palavras (US$) — a unidade usada para precificar créditos.
+ * Calculado num livro de 100 mil palavras: as instruções de cada pedido se
+ * dividem pelas palavras do pedido inteiro (um pedido do Gemini leva ~4 mil),
+ * em vez de contar um pedido inteiro a cada mil palavras.
+ */
 export function costPer1kWords(providerId: string, model: string): CostEstimate {
-  return estimateCostUsd(providerId, model, 1000);
+  const c = estimateCostUsd(providerId, model, 100_000);
+  return { expected: c.expected / 100, worst: c.worst / 100, known: c.known };
 }
