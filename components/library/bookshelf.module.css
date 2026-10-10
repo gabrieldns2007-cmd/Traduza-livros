@@ -34,8 +34,9 @@
   --hero-shadow: rgba(45, 30, 12, 0.34);
 }
 
-/* no claro, o cinza da página fica claro demais sobre a parede da estante: um tom abaixo (≥ 4,5:1) */
-@media not (prefers-color-scheme: dark) {
+/* no claro, o cinza da página fica claro demais sobre a parede da estante: um tom abaixo (≥ 4,5:1)
+   (“light” em vez de “not (… dark)”: o Safari anterior ao 16.4 ignora o “not” sem tipo de mídia) */
+@media (prefers-color-scheme: light) {
   .theme {
     --muted: #6f695f;
   }

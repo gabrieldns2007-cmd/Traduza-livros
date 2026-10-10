@@ -8,6 +8,7 @@ export const COMMERCE_STEPS = ["Enviar", "Confirmar", "Tradução", "Baixar"];
 /**
  * Etapas do processo (padrão: Enviar → Prévia grátis → Traduzir e baixar).
  * `current` é a etapa em andamento (a partir de 1); `done` marca a última como concluída.
+ * Abaixo de 360 px o nome fica embaixo do número, para as etapas caberem sem rolagem lateral.
  */
 export function Steps({
   current,
@@ -29,7 +30,7 @@ export function Steps({
         return (
           <li
             key={label}
-            className="flex flex-none items-center gap-1.5 sm:flex-1 sm:gap-2 sm:last:flex-none"
+            className="flex flex-none items-center gap-1.5 max-[359px]:flex-col max-[359px]:gap-1 sm:flex-1 sm:gap-2 sm:last:flex-none"
             aria-current={active ? "step" : undefined}
           >
             <span

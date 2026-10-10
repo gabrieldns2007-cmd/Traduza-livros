@@ -524,12 +524,20 @@ function ProgressText({ book, percent, queueAhead }: { book: BookSummary; percen
     case "queued":
       // um livro por vez: se outro está traduzindo, este espera ele terminar
       return percent > 0 ? (
-        <>{percent}% · na fila</>
+        <>
+          {percent}% <span className="text-muted">· na fila</span>
+        </>
       ) : (
         <span className="text-ink-2">{queueAhead ? "Começa após o livro atual" : "Começa em instantes"}</span>
       );
     case "analyzing":
-      return percent > 0 ? <>{percent}% · preparando</> : <span className="text-ink-2">Preparando o livro</span>;
+      return percent > 0 ? (
+        <>
+          {percent}% <span className="text-muted">· preparando</span>
+        </>
+      ) : (
+        <span className="text-ink-2">Preparando o livro</span>
+      );
     default:
       if (waitingTurn(book))
         return (
