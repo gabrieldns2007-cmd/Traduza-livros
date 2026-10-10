@@ -38,7 +38,7 @@ O cliente compra **a tradução de um livro**, não “IA”: ele nunca vê qual
 
 **Página inicial** (botão _Traduzir meu livro_) → **Confirmar** (idioma, tipo de tradução, preço e o que está incluído) → **Pagar e traduzir** → “Pagamento confirmado.” → **Acompanhamento** (Livro → Processando → Traduzindo → Revisando → Pronto) → **Baixar** EPUB e PDF.
 
-- **Preços** (`/precos`): Padrão R$ 0,39 e Literária R$ 1,49 por mil palavras + R$ 1,90 por pedido, mínimo R$ 9,90 (ex.: livro de 44 mil palavras = R$ 19,90 / R$ 67,90). Conta em `lib/billing/pricing.ts`; um teste impede preços que deem prejuízo.
+- **Preços** (`/precos`): Padrão R$ 8,90 + R$ 0,10 por mil palavras (livro de 210 mil palavras = R$ 29,90); Literária R$ 1,90 + R$ 1,49 por mil palavras; mínimo R$ 9,90. Conta em `lib/billing/pricing.ts`; um teste impede preços abaixo da margem mínima.
 - **Painel** (`/admin`): no primeiro acesso, ele pede para criar a senha (guardada só como hash; ou use `ADMIN_PASSWORD`). Mostra pedidos, status do pagamento, serviço e modelo, tokens, custo estimado e real, preço, lucro e margem e erros técnicos. Ali você também escolhe a ordem dos serviços de IA, as chaves, como o cliente paga e seus dados de contato.
 - **Pagamentos:** nenhum meio de pagamento real está ligado. No painel → Vendas: **Beta** (grátis para o cliente, o padrão) ou **Teste de pagamento** (página de pagamento simulada, sem dinheiro, que só você aprova). Veja `docs/monetizacao.md`.
 - **Privacidade entre clientes:** não há contas; cada navegador recebe um identificador aleatório e só vê os livros que enviou. O painel vê todos.

@@ -117,12 +117,13 @@ export async function GET() {
     offerLiteraria: Boolean(settings.offerLiteraria),
     pricing: {
       minimumBrl: OPERATIONS.minimumBrl,
-      orderFeeBrl: OPERATIONS.orderFeeBrl,
       levels: SERVICE_LEVELS.map((l) => ({
         id: l.id,
         label: l.label,
         per1kBrl: l.per1kBrl,
-        examples: [10_000, 44_152, 80_000, 150_000].map((w) => ({ words: w, ...breakdown(w, l.id) })),
+        feeBrl: l.feeBrl,
+        minWorstMargin: l.minWorstMargin,
+        examples: [10_000, 44_152, 80_000, 150_000, 210_000, 300_000].map((w) => ({ words: w, ...breakdown(w, l.id) })),
       })),
     },
   });

@@ -13,15 +13,31 @@ describe("preço da tradução", () => {
     expect(priceFor(300, "padrao")).toBe(9.9);
   });
 
-  it("Devotions (44.152 palavras): preço em reais, sem nada técnico", () => {
-    expect(priceFor(44_152, "padrao")).toBe(19.9);
-    expect(priceFor(44_152, "literaria")).toBe(67.9);
+  it("Padrão: R$ 8,90 + R$ 0,10 por mil palavras (210 mil = R$ 29,90)", () => {
+    expect(priceFor(10_000, "padrao")).toBe(9.9);
+    expect(priceFor(10_001, "padrao")).toBe(10.9);
+    expect(priceFor(44_152, "padrao")).toBe(13.9);
+    expect(priceFor(80_000, "padrao")).toBe(16.9);
+    expect(priceFor(150_000, "padrao")).toBe(23.9);
+    expect(priceFor(210_000, "padrao")).toBe(29.9);
+    expect(priceFor(300_000, "padrao")).toBe(38.9);
+    expect(priceFor(1_000_000, "padrao")).toBe(108.9);
   });
 
-  it("cobre o pior custo com margem em qualquer tamanho de livro", () => {
+  it("Literária não muda: R$ 1,90 + R$ 1,49 por mil palavras", () => {
+    expect(priceFor(10_000, "literaria")).toBe(16.9);
+    expect(priceFor(44_152, "literaria")).toBe(67.9);
+    expect(priceFor(210_000, "literaria")).toBe(314.9);
+  });
+
+  it("cobre o pior custo com a margem mínima do tipo em qualquer tamanho de livro", () => {
     expect(() => assertPricingProtectsMargin()).not.toThrow();
-    const b = breakdown(44_152, "padrao");
-    expect(b.processingWorstBrl).toBeGreaterThan(b.processingExpectedBrl);
-    expect(b.marginWorst).toBeGreaterThanOrEqual(0.5);
+    // Padrão: mesmo se a IA fosse paga (Flash-Lite, pior caso), nenhum livro dá prejuízo
+    for (const words of [44_152, 210_000, 1_000_000]) {
+      const b = breakdown(words, "padrao");
+      expect(b.processingWorstBrl).toBeGreaterThan(b.processingExpectedBrl);
+      expect(b.marginWorst).toBeGreaterThanOrEqual(0.15);
+    }
+    expect(breakdown(44_152, "literaria").marginWorst).toBeGreaterThanOrEqual(0.5);
   });
 });

@@ -53,19 +53,27 @@ nunca “Pagar” quando nada é cobrado.
 
 **Preço** (`lib/billing/pricing.ts`):
 
-    preço = palavras ÷ 1000 × preço por mil  +  R$ 1,90 por pedido
+    preço = valor fixo do tipo  +  palavras ÷ 1000 × preço por mil
             arredondado para cima em ,90 e nunca abaixo de R$ 9,90
 
-| Tipo | Por mil palavras | Livro de 44.152 palavras |
-| --- | --- | --- |
-| Padrão — fluente e fiel | R$ 0,39 | R$ 19,90 |
-| Literária — voz do autor, ritmo, imagens | R$ 1,49 | R$ 67,90 |
+| Tipo | Fixo | Por mil palavras | 44.152 palavras | 210 mil palavras |
+| --- | --- | --- | --- | --- |
+| Padrão — fluente e fiel | R$ 8,90 | R$ 0,10 | R$ 13,90 | R$ 29,90 |
+| Literária — voz do autor, ritmo, imagens | R$ 1,90 | R$ 1,49 | R$ 67,90 | R$ 314,90 |
 
-O R$ 1,90 por pedido cobre custos operacionais (tarifa fixa do pagamento,
-armazenamento, suporte). `assertPricingProtectsMargin` (rodado nos testes) garante
-que, para livros de 300 a 1 milhão de palavras, o preço líquido (sem taxa de
-pagamento e impostos) cobre o **pior** custo de processamento daquele tipo de
-tradução + o custo fixo, com a margem mínima.
+O valor fixo cobre custos operacionais (tarifa fixa do pagamento, armazenamento,
+suporte). `assertPricingProtectsMargin` (rodado nos testes) garante que, para livros
+de 300 a 1 milhão de palavras, o preço líquido (sem taxa de pagamento e impostos)
+cobre o **pior** custo de processamento + o custo fixo, com a margem mínima do tipo:
+
+- **Padrão** (mínimo 15%): hoje roda só em serviços gratuitos — custo real de IA
+  zero. A conta supõe o pior caso do modelo pago mais barato (Gemini Flash-Lite):
+  mesmo assim nenhum livro dá prejuízo. Se a chave do Gemini ganhar faturamento,
+  troque o modelo para o Flash-Lite (o 3.8 Flash pago daria prejuízo acima de
+  ~200 mil palavras).
+- **Literária** (mínimo 50%): Anthropic, pago. A conta usa o Claude Sonnet; se
+  `ANTHROPIC_MODEL` ficar no padrão (Opus), o custo real é o dobro e a margem do
+  pior caso cai para ~30%.
 
 **Pedido e pagamento** (`services/commerce/orders.ts`, `services/billing/payments.ts`):
 ao tocar em “Pagar e traduzir”, o preço fica travado no pedido (`BookMeta.order`) e:

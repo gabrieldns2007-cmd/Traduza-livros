@@ -80,7 +80,10 @@ interface Overview {
   routing: Record<LevelId, Service[]>;
   allProviders: Service[];
   offerLiteraria: boolean;
-  pricing: { minimumBrl: number; orderFeeBrl: number; levels: { id: LevelId; label: string; per1kBrl: number; examples: Example[] }[] };
+  pricing: {
+    minimumBrl: number;
+    levels: { id: LevelId; label: string; per1kBrl: number; feeBrl: number; minWorstMargin: number; examples: Example[] }[];
+  };
   admin: { passwordSet: boolean; source: "env" | "panel" | null };
   checkoutFromEnv: boolean;
   business: { name?: string; email?: string };
@@ -498,14 +501,19 @@ function Prices({ data }: { data: Overview }) {
     <section className="mt-16">
       <h2 className="label">Como o preço é calculado</h2>
       <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
-        Preço = palavras × preço por mil + {brl(data.pricing.orderFeeBrl)} por pedido (pagamento, armazenamento, suporte), arredondado para ,90 e
-        nunca abaixo de {brl(data.pricing.minimumBrl)}. A margem do “pior caso” considera o serviço mais caro que pode atender aquele tipo, mesmo que
-        hoje seja um gratuito. Para mudar os valores, edite <code>lib/billing/pricing.ts</code> — um teste impede preços que deem prejuízo.
+        Preço = valor fixo do tipo + palavras × preço por mil, arredondado para ,90 e nunca abaixo de {brl(data.pricing.minimumBrl)}. Os custos abaixo
+        são os que <strong className="font-medium text-ink-2">existiriam se a IA fosse paga</strong>: a Padrão hoje roda só em serviços gratuitos
+        (custo real zero), e a conta usa o modelo pago mais barato (Gemini Flash-Lite) para garantir que nenhum livro dê prejuízo. Não ative
+        faturamento na chave do Gemini sem trocar o modelo para o Flash-Lite. Para mudar os valores, edite <code>lib/billing/pricing.ts</code> — um
+        teste impede preços abaixo da margem mínima.
       </p>
       {data.pricing.levels.map((l) => (
         <div key={l.id} className="mt-6">
           <p className="text-[1rem] font-medium text-ink">
-            {l.label} <span className="num font-normal text-muted">· {brl(l.per1kBrl)} por mil palavras</span>
+            {l.label}{" "}
+            <span className="num font-normal text-muted">
+              · {brl(l.feeBrl)} + {brl(l.per1kBrl)} por mil palavras · margem mínima {pct(l.minWorstMargin)}
+            </span>
           </p>
           <div className="mt-2 overflow-x-auto">
             <table className="num w-full min-w-[32rem] text-[0.8125rem]">

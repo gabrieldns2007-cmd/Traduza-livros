@@ -24,7 +24,7 @@ const STRUCTURE = [
 const EXAMPLES: [string, number][] = [
   ["Conto", 10_000],
   ["Romance", 80_000],
-  ["Livro longo", 150_000],
+  ["Livro longo", 210_000],
 ];
 
 function Section({ title, children, className = "" }: { title: string; children: React.ReactNode; className?: string }) {
