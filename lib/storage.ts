@@ -19,6 +19,7 @@ import path from "node:path";
 import { randomId as randomUUID } from "@/utils/id";
 import { config, type ProviderSettings } from "@/lib/config";
 import type { BookMeta, DocContent, GlossaryEntry } from "@/types/book";
+import type { AdsSettings } from "@/lib/ads";
 import { KeyedMutex } from "@/utils/async";
 
 const ID_RE = /^[a-z0-9-]{6,64}$/;
@@ -222,6 +223,8 @@ export interface Settings extends ProviderSettings {
   checkout?: { mode?: "beta" | "live"; provider?: string };
   /** quem vende (aparece nos termos, na privacidade e no rodapé) */
   business?: { name?: string; email?: string };
+  /** espaços de publicidade (painel → Anúncios); desligados por padrão */
+  ads?: AdsSettings;
   targetLanguage: string;
   dialogueStyle: "target" | "source";
   deepContext: boolean;

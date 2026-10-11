@@ -44,7 +44,7 @@ export function StageTrack({
               ) : null}
             </span>
             <span
-              className={`mt-2 text-[0.6875rem] leading-tight sm:text-[0.8125rem] ${active ? "font-medium text-ink" : complete ? "text-ink-2" : "text-muted"}`}
+              className={`mt-2 max-w-full text-[0.6875rem] leading-tight [overflow-wrap:anywhere] hyphens-auto sm:text-[0.8125rem] ${active ? "font-medium text-ink" : complete ? "text-ink-2" : "text-muted"}`}
             >
               {label}
             </span>

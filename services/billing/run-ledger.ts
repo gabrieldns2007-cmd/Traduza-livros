@@ -128,9 +128,10 @@ export class RunLedger {
   }
 
   /** Tokens de um pedido ao modelo. Pode lançar BillingStop se o gasto disparar sem progresso. */
-  async usage(u: { inputTokens: number; outputTokens: number }, info?: { retry?: boolean }) {
+  async usage(u: { inputTokens: number; outputTokens: number }, info?: { retry?: boolean; refused?: boolean }) {
     this.run.requests++;
     if (info?.retry) this.run.retryRequests = (this.run.retryRequests ?? 0) + 1;
+    if (info?.refused) this.run.refusedRequests = (this.run.refusedRequests ?? 0) + 1;
     this.run.inputTokens += u.inputTokens;
     this.run.outputTokens += u.outputTokens;
     this.run.costUsd = usageCostUsd(this.run.model, this.run.inputTokens, this.run.outputTokens);

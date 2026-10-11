@@ -7,8 +7,9 @@ import { breakdown, OPERATIONS, SERVICE_LEVELS } from "@/lib/billing/pricing";
 import { checkoutConfig } from "@/services/commerce/orders";
 import { paymentSetup } from "@/services/billing/payments";
 import { adminPasswordSource } from "@/services/admin/access";
+import { authEnabled } from "@/lib/auth";
 import { netFactor } from "@/lib/billing/catalog";
-import { routingFor } from "@/services/commerce/routing";
+import { levelOffered, routingFor } from "@/services/commerce/routing";
 import { isFreeProvider, quotaFor } from "@/services/quota/usage";
 import { jobRunner } from "@/services/processing/job-runner";
 
@@ -94,6 +95,11 @@ export async function GET() {
     checkoutFromEnv: checkout.fromEnv,
     payments: paymentSetup(checkout.provider),
     business: settings.business ?? {},
+    // anúncios (painel → Anúncios); com a senha do site (APP_PASSWORD), o Google não vê as páginas
+    ads: settings.ads ?? {},
+    siteLocked: authEnabled(),
+    // Tradução Padrão sem nenhum serviço que funcione: os clientes veem “Em breve”
+    padraoOffered: levelOffered("padrao", settings),
     billing: billingMode(),
     totals: {
       books: rows.length,

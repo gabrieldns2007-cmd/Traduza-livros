@@ -16,7 +16,7 @@ const WORDS_PER_PAGE = 300;
 const BOOK_KINDS = [
   { id: "conto", label: "Conto", words: 10_000, upTo: 40_000 },
   { id: "romance", label: "Romance", words: 80_000, upTo: 120_000 },
-  { id: "longo", label: "Livro longo", words: 150_000, upTo: Infinity },
+  { id: "longo", label: "Livro longo", words: 210_000, upTo: Infinity },
 ] as const;
 
 const pages = (words: number) => Math.max(10, Math.round(words / WORDS_PER_PAGE / 10) * 10);

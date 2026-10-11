@@ -127,6 +127,22 @@ export function repairMarkup(markup: string, tags: Record<string, InlineTag>, sr
 }
 
 /**
+ * Poesia: o modelo às vezes troca as quebras de verso (<br_N/>) por quebras de
+ * linha comuns. Se a tradução tem exatamente tantas quebras de linha quanto
+ * <br_N/> faltando, cada uma volta ao lugar de uma quebra, na ordem do original.
+ * Em qualquer outro caso nada muda. Devolve a marcação e as tags que ainda faltam.
+ */
+export function restoreLineBreaks(markup: string, missing: number[], tags: Record<string, InlineTag>): { markup: string; missing: number[] } {
+  const breaks = missing.filter((k) => tags[String(k)]?.v && tags[String(k)].n === "br");
+  if (!breaks.length) return { markup, missing };
+  const newlines = markup.match(/\r?\n/g)?.length ?? 0;
+  if (newlines !== breaks.length) return { markup, missing };
+  let n = 0;
+  const fixed = markup.replace(/[ \t]*\r?\n[ \t]*/g, () => `<${safeName(tags[String(breaks[n])].n)}_${breaks[n++]}/>`);
+  return { markup: fixed, missing: missing.filter((k) => !breaks.includes(k)) };
+}
+
+/**
  * Último recurso quando o modelo perde tags: anexa ao final as tags vazias
  * que faltaram (âncoras, imagens, quebras), para não perder links nem imagens.
  */

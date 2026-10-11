@@ -43,6 +43,7 @@ O cliente compra **a tradução de um livro**, não “IA”: ele nunca vê qual
 - **Pagamentos:** nenhum meio de pagamento real está ligado. No painel → Vendas: **Beta** (grátis para o cliente, o padrão) ou **Teste de pagamento** (página de pagamento simulada, sem dinheiro, que só você aprova). Veja `docs/monetizacao.md`.
 - **Privacidade entre clientes:** não há contas; cada navegador recebe um identificador aleatório e só vê os livros que enviou. O painel vê todos.
 - **Termos de uso** (`/termos`) e **Política de privacidade** (`/privacidade`), com o nome e o e-mail informados no painel. Peça para um advogado revisar antes de cobrar.
+- **Anúncios (opcional, desligado de início):** no painel → Anúncios (depois de criar a senha do painel), ligue o Google AdSense ou um patrocinador direto e escolha onde aparecem (nunca no pagamento nem na leitura); o `/ads.txt` e o aviso nos termos e na privacidade são criados sozinhos. Os anúncios do Google são pedidos como não personalizados; peça para um advogado revisar os textos antes de ligar o AdSense.
 
 ### Produção
 
@@ -182,7 +183,7 @@ Para caber no limite diário gratuito, o Verso manda trechos grandes por pedido 
 
 Cada serviço tem a própria cota diária. Quando a de um acaba, a tradução pausa e você pode continuar com outro — sempre por escolha sua; nunca há troca automática, e nunca para um serviço pago.
 
-- **GitHub Models** — usa a sua conta do GitHub. Crie um token em [github.com/settings/personal-access-tokens/new](https://github.com/settings/personal-access-tokens/new) com a permissão **Models: Read-only** e cole em Ajustes (ou `GITHUB_MODELS_TOKEN`). Modelos GPT-4.1 / GPT-4.1 mini; pedidos menores (limite de ~8 mil tokens por pedido no nível gratuito). O token automático do Codespaces não é usado.
+- **GitHub Models** — encerrado pelo GitHub em 30/07/2026 e não é mais usado. Um token antigo salvo é ignorado (nunca recebe texto) e pode ser apagado em Ajustes. Se ele era a sua única chave, salve a do Gemini ou a do Groq: sem nenhuma, os clientes veem a Tradução Padrão como “Em breve”.
 - **Groq** — crie uma chave em [console.groq.com/keys](https://console.groq.com/keys) e cole em Ajustes (ou `GROQ_API_KEY`). Modelos Llama 3.3 70B / GPT-OSS 120B; o limite é de texto por dia.
 
 Os **créditos grátis de hoje** (Ajustes e escolha do serviço no livro) mostram quantos pedidos já foram usados em cada serviço e, quando a cota acaba, a hora em que ela volta. Os limites oficiais mudam; quando o serviço não informa o restante, o número é uma estimativa.
@@ -195,14 +196,14 @@ Antes de traduzir o livro todo, **Ver prévia grátis** traduz só um trecho do 
 
 ## Versão pública (qualquer pessoa, de graça)
 
-Com `NEXT_PUBLIC_VERSO_MODE=public`, o Verso vira um site aberto: cada pessoa entra com o **Google**, cola a **própria chave gratuita** (Gemini, Groq ou GitHub Models) e os livros ficam **no navegador dela** (IndexedDB). O servidor só entrega as páginas — não guarda livros nem chaves e não gasta a cota de ninguém.
+Com `NEXT_PUBLIC_VERSO_MODE=public`, o Verso vira um site aberto: cada pessoa entra com o **Google**, cola a **própria chave gratuita** (Gemini ou Groq) e os livros ficam **no navegador dela** (IndexedDB). O servidor só entrega as páginas — não guarda livros nem chaves e não gasta a cota de ninguém.
 
 Como funciona por dentro:
 
 - O mesmo código das rotas `app/api` roda no navegador. `public/verso-sw.js` (service worker) encaminha cada pedido `/api/…` para a aba aberta, que responde com `lib/browser/backend.ts`.
 - `lib/browser/fs.ts` imita `node:fs` sobre o IndexedDB e `next.config.ts` (`turbopack.resolveAlias`, condição `browser`) troca os módulos do Node — por isso armazenamento, retomada, prévia, glossário e exportação EPUB/PDF são os mesmos do servidor.
 - Só uma aba por vez traduz (Web Locks); as outras usam a dela. Se a página for fechada, a tradução continua de onde parou quando a pessoa volta.
-- Gemini e Groq são chamados direto do navegador; o GitHub Models passa por `/api/relay/github`, um repasse sem estado (a chave vem a cada pedido e não é guardada).
+- Gemini e Groq são chamados direto do navegador. (O repasse `/api/relay/github` era do GitHub Models, encerrado em 30/07/2026, e não é mais usado.)
 - Login: botão “Continuar com o Google” (Google Identity Services). Só precisa do **Client ID** público; não há segredo no servidor. A conta separa os livros de cada pessoa no mesmo aparelho; “Minha conta” mostra os créditos grátis do dia, os livros e permite sair ou apagar os dados do aparelho.
 
 ### Publicar no Vercel (gratuito, sem cartão)

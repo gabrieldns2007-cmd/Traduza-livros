@@ -166,7 +166,7 @@ export class GeminiClient implements LLMClient {
     let buffer = "";
     let text = "";
     let finish = "";
-    let blocked = false;
+    let blocked = "";
     let usage = { inputTokens: 0, outputTokens: 0 };
 
     const handle = (data: string) => {
@@ -182,7 +182,7 @@ export class GeminiClient implements LLMClient {
         return;
       }
       if (json.error) throw new ProviderError(`Erro do Gemini: ${json.error.message ?? "desconhecido"}`, { fatal: false, code: "server" });
-      if (json.promptFeedback?.blockReason) blocked = true;
+      if (json.promptFeedback?.blockReason) blocked = json.promptFeedback.blockReason;
       const cand = json.candidates?.[0];
       for (const part of cand?.content?.parts ?? []) if (part.text && !part.thought) text += part.text;
       if (cand?.finishReason) finish = cand.finishReason;
@@ -207,7 +207,11 @@ export class GeminiClient implements LLMClient {
     }
     if (buffer.startsWith("data:")) handle(buffer.slice(5).trim());
 
-    const refused = blocked || /SAFETY|PROHIBITED|BLOCKLIST|RECITATION|SPII/i.test(finish);
+    // motivo do fim quando não é o normal (só o código, nunca o texto): mostra recusas por citação ou segurança
+    if (blocked || (finish && finish !== "STOP" && finish !== "MAX_TOKENS")) {
+      console.info(`[gemini] resposta terminou com ${finish || "—"}${blocked ? ` (pedido bloqueado: ${blocked})` : ""}`);
+    }
+    const refused = Boolean(blocked) || /SAFETY|PROHIBITED|BLOCKLIST|RECITATION|SPII/i.test(finish);
     return {
       text,
       stopReason: refused ? "refusal" : finish === "MAX_TOKENS" ? "max_tokens" : "end",

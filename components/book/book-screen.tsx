@@ -18,8 +18,13 @@ import { COMMERCE_STEPS, Steps } from "@/components/ui/steps";
 import { OrderPanel } from "@/components/commerce/order-panel";
 import { OrderProgress } from "@/components/commerce/order-progress";
 import { StageTrack } from "@/components/ui/stage-track";
+import { AdSlot } from "@/components/ads/ad-slot";
+import { bookAdPlacement, type AdConfig } from "@/lib/ads";
 
-export function BookScreen({ initial, initialGlossary }: { initial: BookView; initialGlossary: GlossaryEntry[] }) {
+/** Publicidade da página do livro (só o servidor próprio passa; a versão pública não tem anúncios). */
+type BookAds = { traduzindo?: AdConfig | null; pronto?: AdConfig | null };
+
+export function BookScreen({ initial, initialGlossary, ads }: { initial: BookView; initialGlossary: GlossaryEntry[]; ads?: BookAds }) {
   const router = useRouter();
   const [book, setBook] = useState(initial);
   const [glossary, setGlossary] = useState(initialGlossary);
@@ -77,6 +82,7 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
   };
 
   const source = book.sourceLanguage ?? book.detectedLanguage;
+  const adPlacement = PUBLIC_MODE ? null : bookAdPlacement(book.status);
   const displayTitle = book.translatedTitle && book.status === "done" ? book.translatedTitle : book.title;
 
   return (
@@ -121,6 +127,10 @@ export function BookScreen({ initial, initialGlossary }: { initial: BookView; in
           {book.profile && (book.profile.genre || book.profile.tone) && <AboutBook profile={book.profile} />}
         </>
       )}
+
+      {/* publicidade: no fim da página (se o espaço sumir ou mudar de altura, a lista de capítulos não pula) —
+          nunca no pedido, no pagamento nem entre os botões */}
+      {adPlacement && <AdSlot ad={ads?.[adPlacement]} placement={adPlacement} className="mt-14" />}
 
       <footer className="mt-16 flex flex-wrap items-center justify-between gap-4 border-t border-rule pt-6 text-[0.8125rem] text-muted">
         <span className="num">

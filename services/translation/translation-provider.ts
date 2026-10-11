@@ -87,8 +87,13 @@ export interface BatchOutput {
 }
 
 export interface ProviderLimits {
-  /** caracteres de texto de origem por pedido (vários capítulos pequenos cabem num pedido só) */
+  /**
+   * caracteres por pedido (vários capítulos pequenos cabem num pedido só);
+   * conta o texto de origem e a moldura <seg id="N"></seg> de cada trecho
+   */
   batchChars: number;
+  /** trechos por pedido (padrão 120); poesia tem muitos trechos curtos, então o Gemini aceita mais */
+  maxSegments?: number;
   /** pedidos simultâneos */
   concurrency: number;
 }

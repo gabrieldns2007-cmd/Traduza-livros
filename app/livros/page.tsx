@@ -22,5 +22,8 @@ export default async function LibraryPage() {
   const books = (await visibleTo(await store.list(), jar.get(OWNER_COOKIE)?.value, jar.get(ADMIN_COOKIE)?.value)).map(summaryOf);
   // “Novo livro” abre o seletor de arquivo aqui mesmo (mesmo idioma e limite da página inicial)
   const upload = { targetLanguage: (await readSettings()).targetLanguage, maxUploadMb: Math.round(config.maxUploadBytes / 1024 / 1024) };
-  return <LibraryPageView books={books} upload={upload} />;
+  // publicidade (painel → Anúncios): abaixo da estante, só quando há livros nela — a estante vazia é uma
+  // tela sem conteúdo (o Google não aceita anúncios assim) e o anúncio ficaria colado no botão de enviar
+  const { adFor } = await import("@/services/ads");
+  return <LibraryPageView books={books} upload={upload} ad={books.length ? await adFor("livros") : null} />;
 }

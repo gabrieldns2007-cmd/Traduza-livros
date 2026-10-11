@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { connection } from "next/server";
 import { readSettings } from "@/lib/storage";
 import { config } from "@/lib/config";
@@ -5,6 +6,16 @@ import { PUBLIC_MODE } from "@/lib/mode";
 import { PublicHomeFlow } from "@/components/public/loaders";
 import { Landing } from "@/components/home/landing";
 import { levelOffered } from "@/services/commerce/routing";
+import { adFor } from "@/services/ads";
+import { adsensePublisher } from "@/lib/ads";
+
+/** Verificação do site no AdSense: a marca vai na página inicial assim que o código do editor é salvo no painel. */
+export async function generateMetadata(): Promise<Metadata> {
+  if (PUBLIC_MODE) return {};
+  await connection();
+  const publisher = adsensePublisher((await readSettings()).ads);
+  return publisher ? { other: { "google-adsense-account": publisher } } : {};
+}
 
 export default async function HomePage() {
   // serviço comercial: a página inicial é a página de venda
@@ -16,6 +27,7 @@ export default async function HomePage() {
         targetLanguage={settings.targetLanguage}
         maxUploadMb={Math.round(config.maxUploadBytes / 1024 / 1024)}
         literaria={levelOffered("literaria", settings)}
+        ad={await adFor("home")}
       />
     );
   }

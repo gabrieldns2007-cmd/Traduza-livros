@@ -21,7 +21,7 @@ import { mergeCandidates } from "@/services/glossary/glossary";
 import { createProvider, type TranslationProvider } from "@/services/translation";
 import { ProviderError } from "@/services/translation/llm/types";
 import { KeyedMutex, mapLimit } from "@/utils/async";
-import { bookContext, pendingChars, processChapters, translateRange } from "./chapter-processor";
+import { batchLimits, bookContext, pendingLoad, processChapters, translateRange } from "./chapter-processor";
 
 const ACTIVE: BookMeta["status"][] = ["queued", "analyzing", "translating"];
 
@@ -382,8 +382,9 @@ class JobRunner {
     const hooks = {
       signal: inner.signal,
       analysisLock: <T>(fn: () => Promise<T>) => this.analysisMutex.run(`analysis:${bookId}`, fn),
-      onUsage: async (usage: { inputTokens: number; outputTokens: number }, info?: { retry?: boolean }) => {
-        if (!usage.inputTokens && !usage.outputTokens) return;
+      onUsage: async (usage: { inputTokens: number; outputTokens: number }, info?: { retry?: boolean; refused?: boolean }) => {
+        // uma recusa sem tokens informados ainda gastou um pedido da cota
+        if (!usage.inputTokens && !usage.outputTokens && !info?.refused) return;
         await store.update(
           bookId,
           (m) => {
@@ -431,19 +432,25 @@ class JobRunner {
           const todo = fresh.chapters.filter((c) => c.status !== "done");
           if (!todo.length || inner.signal.aborted) break;
 
-          // capítulos pequenos e consecutivos vão juntos no mesmo pedido (menos chamadas)
+          // capítulos pequenos e consecutivos vão juntos no mesmo pedido (menos chamadas). A conta é a
+          // mesma dos lotes (caracteres com a moldura de cada trecho e limite de trechos): um grupo
+          // cabe num pedido só, sem sobrar um pedacinho para um pedido extra
+          const limit = batchLimits(provider.limits);
           const groups: (typeof todo)[] = [];
           let group: typeof todo = [];
           let chars = 0;
+          let segments = 0;
           for (const c of todo) {
-            const n = await pendingChars(bookId, c);
-            if (group.length && (chars + n > provider.limits.batchChars || group.length >= 40)) {
+            const load = await pendingLoad(bookId, c);
+            if (group.length && (chars + load.chars > limit.chars || segments + load.segments > limit.segments || group.length >= 40)) {
               groups.push(group);
               group = [];
               chars = 0;
+              segments = 0;
             }
             group.push(c);
-            chars += n;
+            chars += load.chars;
+            segments += load.segments;
           }
           if (group.length) groups.push(group);
 
@@ -601,7 +608,15 @@ class JobRunner {
     } catch (err) {
       if (err instanceof ProviderError && err.fatal) throw err;
       if (signal.aborted) throw err;
-      console.warn("[runner] análise do livro falhou; seguindo sem perfil", err);
+      if (!meta.analysisFailed) {
+        // falha passageira: traduz sem perfil agora e tenta de novo na próxima execução (uma vez só)
+        console.warn("[runner] análise do livro falhou; seguindo sem perfil, nova tentativa na próxima execução", err);
+        await store.update(bookId, (m) => {
+          m.analysisFailed = true;
+        });
+        return;
+      }
+      console.warn("[runner] análise do livro falhou de novo; seguindo sem perfil", err);
       analysis = { profile: { genre: "", tone: "", narrativeVoice: "", styleNotes: "" }, glossary: [], tocTranslations: [] as string[] };
     }
 
@@ -614,6 +629,7 @@ class JobRunner {
     await store.updateGlossary(bookId, (entries) => mergeCandidates(entries, analysis.glossary));
     await store.update(bookId, (m) => {
       m.profile = analysis.profile;
+      delete m.analysisFailed;
       if (analysis.translatedTitle) m.translatedTitle ??= analysis.translatedTitle;
       if (!m.sourceLanguage && !m.detectedLanguage && "sourceLanguage" in analysis && analysis.sourceLanguage) {
         m.detectedLanguage = analysis.sourceLanguage;

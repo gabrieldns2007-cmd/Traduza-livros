@@ -57,6 +57,7 @@ for (const id of fs.readdirSync(booksDir).sort()) {
         `${r.inputTokens}+${r.outputTokens} tokens  ${r.costUsd === null ? "sem preço" : usd(cost)}  ` +
         `(${usd(per1k)}/mil)  ${r.requests ?? "?"} pedidos` +
         (r.retryRequests ? ` (${r.retryRequests} refeitos)` : "") +
+        (r.refusedRequests ? ` (${r.refusedRequests} recusados)` : "") +
         (r.localSegments ? `  ${r.localSegments} trechos sem chamada` : "") +
         `  ${Math.round(r.activeMs / 1000)}s  ${r.chapters} cap.` +
         (r.billing === "hosted"

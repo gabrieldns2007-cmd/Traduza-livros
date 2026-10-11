@@ -16,7 +16,8 @@ import { isFreeProvider, quotaFor } from "@/services/quota/usage";
 export type LevelId = "padrao" | "literaria";
 
 export const DEFAULT_ROUTING: Record<LevelId, string[]> = {
-  padrao: ["gemini", "github", "groq"],
+  // o GitHub Models foi encerrado (30/07/2026); se ainda estiver numa lista salva, é pulado
+  padrao: ["gemini", "groq"],
   literaria: ["anthropic"],
 };
 

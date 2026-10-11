@@ -3,17 +3,23 @@ import { connection } from "next/server";
 import type { Metadata } from "next";
 import { PUBLIC_MODE } from "@/lib/mode";
 import { readSettings } from "@/lib/storage";
-import { Contact, LegalPage, sellerOf } from "@/components/legal/legal-page";
+import { adsDisclosure } from "@/lib/ads";
+import { Contact, LegalPage, legalUpdated, sellerOf } from "@/components/legal/legal-page";
 
 export const metadata: Metadata = { title: "Termos de uso" };
 
 export default async function TermsPage() {
   if (PUBLIC_MODE) notFound();
   await connection();
-  const seller = sellerOf((await readSettings()).business);
+  const settings = await readSettings();
+  const seller = sellerOf(settings.business);
+  // publicidade (painel → Anúncios): a cláusula só aparece com os anúncios ligados
+  const ads = adsDisclosure(settings.ads);
+  const n = ads ? 1 : 0;
   return (
     <LegalPage
       title="Termos de uso"
+      updated={legalUpdated(settings.ads?.updatedAt)}
       intro={
         <p>
           Estes termos explicam como funciona a tradução de livros oferecida por {seller.name}. Ao enviar um livro e confirmar um pedido, você
@@ -67,15 +73,24 @@ export default async function TermsPage() {
           preciso criar conta, os livros ficam ligados ao navegador em que foram enviados.
         </p>
       </section>
+      {ads && (
+        <section>
+          <h2>7. Publicidade</h2>
+          <p>
+            Algumas páginas do site mostram anúncios, identificados como “Publicidade”. Eles não interferem na tradução, nunca aparecem no pagamento
+            nem na leitura do seu livro, e não somos responsáveis pelo conteúdo dos sites dos anunciantes.
+          </p>
+        </section>
+      )}
       <section>
-        <h2>7. Mudanças nestes termos</h2>
+        <h2>{7 + n}. Mudanças nestes termos</h2>
         <p>
           Podemos atualizar estes termos. A versão em vigor fica sempre nesta página, com a data da última atualização. Pedidos já confirmados seguem
           os termos da data da compra.
         </p>
       </section>
       <section>
-        <h2>8. Contato</h2>
+        <h2>{8 + n}. Contato</h2>
         <p>
           {seller.name} · <Contact email={seller.email} />
         </p>

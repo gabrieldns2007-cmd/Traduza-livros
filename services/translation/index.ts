@@ -1,4 +1,4 @@
-import { config, geminiApiKey, githubToken, groqApiKey, providerConfigs, type ProviderId, type ProviderSettings } from "@/lib/config";
+import { config, geminiApiKey, groqApiKey, providerConfigs, type ProviderId, type ProviderSettings } from "@/lib/config";
 import type { TranslationProvider } from "./translation-provider";
 import { LLMTranslationProvider } from "./llm-provider";
 import { DemoTranslationProvider } from "./demo-provider";
@@ -24,27 +24,21 @@ function effort(): Effort {
 export function createProvider(id: string, settings?: ProviderSettings): TranslationProvider {
   const cfg = providerConfigs(settings).find((p) => p.id === id);
   if (!cfg) throw new ProviderError(`Provedor desconhecido: ${id}.`, { fatal: true, code: "other" });
+  // serviço encerrado pelo fornecedor: nunca é chamado, mesmo com chave salva
+  if (cfg.retired) throw new ProviderError(cfg.hint ?? `${cfg.label} foi encerrado.`, { fatal: true, code: "model" });
   if (!cfg.available) throw new ProviderError(`${cfg.label} não está configurado. ${cfg.hint ?? ""}`.trim(), { fatal: true, code: "auth" });
   switch (cfg.id as ProviderId) {
     case "gemini":
-      // pedidos grandes e um de cada vez: poucos pedidos por dia no nível gratuito
+      // pedidos grandes e um de cada vez: poucos pedidos por dia no nível gratuito.
+      // Até 400 trechos por pedido: poesia (um verso por parágrafo) cabe em poucos pedidos
       return new LLMTranslationProvider(counted(new GeminiClient(cfg.model, geminiApiKey(settings))), {
         paid: false,
-        limits: { batchChars: Number(process.env.GEMINI_BATCH_CHARS) || 24000, concurrency: 1 },
+        limits: {
+          batchChars: Number(process.env.GEMINI_BATCH_CHARS) || 24000,
+          maxSegments: Number(process.env.GEMINI_MAX_SEGMENTS) || 400,
+          concurrency: 1,
+        },
       });
-    case "github":
-      // nível gratuito: até ~8 mil tokens de entrada e 4 mil de saída por pedido
-      return new LLMTranslationProvider(
-        counted(
-          new FreeOpenAIClient("github", cfg.model, githubToken(settings), {
-            label: "GitHub Models",
-            baseUrl: freeServiceBase("github"),
-            maxOutputTokens: 4000,
-            headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28" },
-          }),
-        ),
-        { paid: false, limits: { batchChars: Number(process.env.GITHUB_BATCH_CHARS) || 8000, concurrency: 1 } },
-      );
     case "groq":
       // o limite gratuito por minuto conta entrada + saída: pedidos menores
       return new LLMTranslationProvider(

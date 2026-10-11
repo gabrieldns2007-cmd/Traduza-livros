@@ -12,6 +12,8 @@ import { Chevron } from "@/components/ui/icons";
 import { RunCosts } from "@/components/book/run-costs";
 import { SettingsForm } from "@/components/settings/settings-form";
 import { PasswordForm, StoreSettings } from "./store-settings";
+import { AdsPanel } from "./ads-settings";
+import type { AdsSettings } from "@/lib/ads";
 
 type LevelId = "padrao" | "literaria";
 
@@ -87,6 +89,12 @@ interface Overview {
   admin: { passwordSet: boolean; source: "env" | "panel" | null };
   checkoutFromEnv: boolean;
   business: { name?: string; email?: string };
+  /** anúncios (painel → Anúncios) */
+  ads: AdsSettings;
+  /** senha do site ligada (APP_PASSWORD): o Google não vê as páginas */
+  siteLocked: boolean;
+  /** a Tradução Padrão tem um serviço que funciona (senão, os clientes veem “Em breve”) */
+  padraoOffered: boolean;
 }
 
 const STATUS: Record<string, string> = {
@@ -209,6 +217,7 @@ export function AdminDashboard() {
             business={data.business}
             onSaved={load}
           />
+          <AdsPanel ads={data.ads} siteLocked={data.siteLocked} passwordSet={data.admin.passwordSet} onSaved={load} />
           <Routing data={data} onSaved={load} />
           <Prices data={data} />
           <section className="mt-16">
@@ -257,6 +266,12 @@ function Summary({ data }: { data: Overview }) {
           </>
         )}
       </p>
+      {!data.padraoOffered && (
+        <p className="mt-3 text-[0.9375rem] leading-relaxed text-ink-2" role="alert">
+          <strong className="font-medium text-accent">A Tradução Padrão está parada:</strong> nenhum serviço gratuito está pronto, então os clientes
+          veem “Em breve” e não conseguem pedir. Salve a chave do Gemini ou do Groq em Chaves e serviços, abaixo.
+        </p>
+      )}
       <dl className="mt-6 grid grid-cols-2 gap-x-6 gap-y-6 border-y border-rule py-6 sm:grid-cols-4">
         <Stat label="Livros" value={formatNumber(t.books)} sub={`${formatNumber(t.orders)} com pedido`} />
         <Stat

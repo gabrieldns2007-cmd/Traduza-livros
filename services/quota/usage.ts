@@ -30,8 +30,6 @@ const keyOf = (provider: FreeProviderId, model: string) => `${provider}|${model}
 /** Estimativas de pedidos por dia no nível gratuito (fontes não oficiais; podem mudar). */
 const ESTIMATED_DAILY: Record<string, number> = {
   "gemini-3.8-flash": 20,
-  "openai/gpt-4.1": 50,
-  "openai/gpt-4.1-mini": 150,
 };
 
 const mutex = new KeyedMutex();

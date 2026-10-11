@@ -7,6 +7,8 @@ import { ArrowRight, Check } from "@/components/ui/icons";
 import { EditionConfigurator } from "@/components/commerce/edition-configurator";
 import { UploadCta } from "@/components/home/upload-cta";
 import { Faq } from "@/components/commerce/faq";
+import { AdSlot } from "@/components/ads/ad-slot";
+import type { AdConfig } from "@/lib/ads";
 
 export const metadata: Metadata = { title: "Preços" };
 
@@ -66,6 +68,7 @@ function EditionPreview() {
 
 export default async function PricesPage() {
   let literaria = false;
+  let ad: AdConfig | null = null;
   let action: ReactNode = (
     <ButtonLink href="/" size="lg" className="w-full">
       Traduzir meu livro <ArrowRight />
@@ -86,6 +89,9 @@ export default async function PricesPage() {
     const maxUploadMb = Math.round(config.maxUploadBytes / 1024 / 1024);
     action = <UploadCta targetLanguage={settings.targetLanguage} maxUploadMb={maxUploadMb} label="Traduzir meu livro" />;
     closingAction = <UploadCta targetLanguage={settings.targetLanguage} maxUploadMb={maxUploadMb} label="Traduzir meu livro" />;
+    // publicidade (painel → Anúncios): desligada aqui por padrão — é onde a pessoa decide comprar
+    const { adFor } = await import("@/services/ads");
+    ad = await adFor("precos");
   }
 
   return (
@@ -154,6 +160,8 @@ export default async function PricesPage() {
         </p>
         <div className="mt-7 flex justify-center">{closingAction}</div>
       </section>
+
+      <AdSlot ad={ad} placement="precos" className="mt-16" />
     </main>
   );
 }

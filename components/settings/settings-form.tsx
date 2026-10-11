@@ -149,7 +149,7 @@ export function SettingsForm({ variant = "customer" }: { variant?: "customer" | 
                 checked={form.deepContext}
                 onChange={(v) => update({ deepContext: v })}
                 label="Leitura atenta de cada capítulo"
-                description="Uma chamada extra por capítulo para resumir a história. Melhora a continuidade, mas gasta mais cota. Desligado por padrão."
+                description="Uma chamada extra por capítulo para resumir a história. Melhora a continuidade, mas gasta mais cota. Capítulos muito curtos (como um poema) não precisam dela. Desligado por padrão."
               />
             </div>
             <label className="mt-7 block">

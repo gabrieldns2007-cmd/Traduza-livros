@@ -26,7 +26,11 @@ export const config = {
 
 export type ProviderId = "gemini" | "github" | "groq" | "anthropic" | "openai" | "demo";
 
-/** Serviços gratuitos (sem cartão), na ordem em que são sugeridos. */
+/**
+ * Serviços gratuitos (sem cartão), na ordem em que são sugeridos.
+ * O GitHub Models foi encerrado pelo GitHub (30/07/2026): continua na lista só
+ * para que ajustes antigos carreguem e o token salvo nunca volte ao navegador.
+ */
 export const FREE_PROVIDERS = ["gemini", "github", "groq"] as const;
 export type FreeProviderId = (typeof FREE_PROVIDERS)[number];
 
@@ -47,6 +51,8 @@ export interface ProviderConfig {
   billing: "byok" | "hosted" | "none";
   /** motivo de indisponibilidade (para a tela de configurações) */
   hint?: string;
+  /** encerrado pelo fornecedor: nunca é usado, mesmo com chave salva */
+  retired?: boolean;
 }
 
 /** Valores salvos pela tela de Ajustes que afetam provedores (nunca enviados ao navegador). */
@@ -63,6 +69,9 @@ export const GEMINI_MODELS = [
   { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash", note: "melhor qualidade · poucos pedidos por dia" },
   { id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite", note: "mais pedidos por dia · qualidade um pouco menor" },
 ];
+
+/** Aviso mostrado no lugar do GitHub Models, que deixou de existir. */
+export const GITHUB_RETIRED_MESSAGE = "O GitHub encerrou o GitHub Models em 30/07/2026. Use o Gemini ou o Groq.";
 
 export const GITHUB_MODELS = [
   { id: "openai/gpt-4.1", label: "GPT-4.1", note: "melhor qualidade · cerca de 50 pedidos por dia" },
@@ -111,14 +120,16 @@ export function providerConfigs(s?: ProviderSettings): ProviderConfig[] {
       hint: "Adicione sua chave gratuita do Google AI Studio em Ajustes",
     },
     {
+      // encerrado pelo GitHub em 30/07/2026: um token salvo nunca manda traduções para lá
       id: "github",
       label: "GitHub Models",
-      available: Boolean(githubToken(s)),
+      available: false,
+      retired: true,
       model: process.env.GITHUB_MODELS_MODEL || s?.githubModel || GITHUB_MODELS[0].id,
       analysisModel: process.env.GITHUB_MODELS_MODEL || s?.githubModel || GITHUB_MODELS[0].id,
       paid: false,
       billing: "byok",
-      hint: "Adicione um token gratuito do GitHub em Ajustes",
+      hint: GITHUB_RETIRED_MESSAGE,
     },
     {
       id: "groq",

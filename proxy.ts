@@ -9,6 +9,7 @@ import { canSeeBook, isOwnerId, newOwnerId, OWNER_COOKIE, OWNER_MAX_AGE } from "
  *  - painel administrativo: pede a senha do painel;
  *  - APP_PASSWORD (opcional): pede a senha do site;
  *  - livros: cada navegador só abre os próprios (o painel abre todos).
+ * O /ads.txt (anúncios) fica sempre aberto: o Google precisa lê-lo.
  */
 export async function proxy(request: NextRequest) {
   // versão pública: o login é com Google e os livros ficam no navegador; o servidor
@@ -21,6 +22,8 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
   const { pathname } = request.nextUrl;
+  // arquivo público dos anúncios: sem senha do site e sem cookie de dono (quem lê é o robô do Google)
+  if (pathname === "/ads.txt") return NextResponse.next();
   const adminCookie = request.cookies.get(ADMIN_COOKIE)?.value;
 
   // avisos do meio de pagamento: ele não tem senha nem cookie; a autenticidade é
@@ -73,5 +76,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|manifest.webmanifest|fonts/).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|manifest.webmanifest|fonts/|ads\\.txt$).*)"],
 };

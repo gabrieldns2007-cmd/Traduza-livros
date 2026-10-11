@@ -4,6 +4,8 @@ import { brl } from "@/lib/money";
 import { ArrowRight, Check } from "@/components/ui/icons";
 import { ButtonLink } from "@/components/ui/button";
 import { Faq } from "@/components/commerce/faq";
+import { AdSlot } from "@/components/ads/ad-slot";
+import type { AdConfig } from "@/lib/ads";
 import { UploadCta } from "./upload-cta";
 
 const STEPS: [string, string][] = [
@@ -42,7 +44,18 @@ function Section({ title, children, className = "" }: { title: string; children:
  * ler, não da compra — mas sem esconder nada: o valor aparece antes de
  * continuar.
  */
-export function Landing({ targetLanguage, maxUploadMb, literaria }: { targetLanguage: string; maxUploadMb: number; literaria: boolean }) {
+export function Landing({
+  targetLanguage,
+  maxUploadMb,
+  literaria,
+  ad,
+}: {
+  targetLanguage: string;
+  maxUploadMb: number;
+  literaria: boolean;
+  /** espaço de publicidade (painel → Anúncios): só no fim, depois do último botão */
+  ad?: AdConfig | null;
+}) {
   const levels = SERVICE_LEVELS.filter((l) => l.id === "padrao" || literaria);
   return (
     <main className="mx-auto w-full max-w-[44rem] px-5 pb-28 sm:px-8">
@@ -199,6 +212,8 @@ export function Landing({ targetLanguage, maxUploadMb, literaria }: { targetLang
           <UploadCta targetLanguage={targetLanguage} maxUploadMb={maxUploadMb} />
         </div>
       </section>
+
+      <AdSlot ad={ad} placement="home" className="mt-16" />
     </main>
   );
 }

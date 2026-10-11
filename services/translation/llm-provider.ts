@@ -112,8 +112,9 @@ export class LLMTranslationProvider implements TranslationProvider {
       purpose: "translation",
       system: translationSystemPrompt(input.book),
       user: translationUserPrompt(input),
-      // inclui folga para o raciocínio do modelo (thinking conta no limite)
-      maxTokens: Math.min(64000, Math.max(16000, Math.ceil(sourceChars * 1.2) + 8000)),
+      // inclui folga para o raciocínio do modelo (thinking conta no limite) e ~8 tokens
+      // da moldura <seg id="N"></seg> de cada trecho (poesia: centenas de versos curtos)
+      maxTokens: Math.min(64000, Math.max(16000, Math.ceil(sourceChars * 1.2) + input.segments.length * 8 + 8000)),
       signal: input.signal,
       onWait: input.onWait,
     });

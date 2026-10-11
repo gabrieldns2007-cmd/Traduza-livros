@@ -84,7 +84,7 @@ async function until(bookId: string, statuses: string[], ms = 10_000) {
 
 beforeEach(async () => {
   await fs.rm(path.join(config.dataDir, "usage.json"), { force: true });
-  await writeSettings({ ...DEFAULT_SETTINGS, geminiApiKey: "chave-gemini", githubToken: "token-github" });
+  await writeSettings({ ...DEFAULT_SETTINGS, geminiApiKey: "chave-gemini", groqApiKey: "chave-groq" });
 });
 
 afterEach(() => {
@@ -176,23 +176,23 @@ describe("compra de uma tradução", () => {
 
   it("cota de um serviço gratuito acaba: segue sozinho com o próximo, sem perder nada", async () => {
     const gemini = new Fake("gemini", 2);
-    const github = new Fake("github");
-    jobRunner.providerFactory = (id) => (id === "gemini" ? gemini : id === "github" ? github : new Fake(id));
+    const groq = new Fake("groq");
+    jobRunner.providerFactory = (id) => (id === "gemini" ? gemini : id === "groq" ? groq : new Fake(id));
     const id = await book(8);
     await placeOrder((await store.get(id))!, "padrao", {});
     await confirmOrder((await store.get(id))!, "http://localhost");
     const m = await until(id, ["done", "paused", "error"]);
     expect(m.status).toBe("done");
     expect(gemini.calls).toBe(2);
-    expect(github.calls).toBeGreaterThan(0);
-    expect(new Set(m.runs!.map((r) => r.provider))).toEqual(new Set(["gemini", "github"]));
+    expect(groq.calls).toBeGreaterThan(0);
+    expect(new Set(m.runs!.map((r) => r.provider))).toEqual(new Set(["gemini", "groq"]));
     expect(m.progress.translatedSegments).toBe(m.totals.segments);
   });
 
   it("todos sem cota: espera e continua sozinho quando a cota volta", async () => {
     jobRunner.providerFactory = (id) => new Fake(id);
     await recordExhausted("gemini", MODELS.gemini, Date.now() + 1200);
-    await recordExhausted("github", MODELS.github, Date.now() + 1200);
+    await recordExhausted("groq", MODELS.groq, Date.now() + 1200);
     const id = await book(2);
     await placeOrder((await store.get(id))!, "padrao", {});
     await confirmOrder((await store.get(id))!, "http://localhost");

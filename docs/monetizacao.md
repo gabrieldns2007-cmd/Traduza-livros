@@ -97,7 +97,7 @@ O modo de pagamento é escolhido no painel (Vendas); `CHECKOUT_MODE` e
 
 **Quem traduz** (`services/commerce/routing.ts`, editável no painel):
 
-- Padrão: Gemini → GitHub Models → Groq (todos gratuitos). Se a cota de um acaba, a
+- Padrão: Gemini → Groq (os dois gratuitos; o GitHub Models foi encerrado em 30/07/2026). Se a cota de um acaba, a
   tradução passa sozinha para o próximo; se todos acabam, espera a cota voltar e
   continua sozinha (“Sua tradução está na fila”).
 - A Padrão **nunca** usa um serviço pago, mesmo que ele seja colocado na lista.
@@ -121,13 +121,42 @@ pedidos (beta) ou receita, custo real (só serviços pagos) e quanto custaria pe
 tabela, margem por livro, erros técnicos, histórico de execuções, ordem dos serviços
 por tipo, tabela de preços com margem e as chaves dos serviços.
 
+**Anúncios (opcional, desligado de início)** — painel → Anúncios. Uma renda extra que
+não atrapalha a compra: no máximo um espaço por página, sempre identificado como
+“Publicidade”, com a cara discreta do site (sem a cor de destaque, sem parecer botão
+do Verso), sem janelas, anúncios fixos na tela ou em tela cheia. Lugares: fim da
+página inicial, fim de `/precos` (desligado de início), abaixo da estante em “Meus
+livros” (só quando há livros nela), fim da página do livro enquanto ele é traduzido
+(desligado de início: o Google é rigoroso com telas de espera) e fim da página do
+livro pronto, depois dos downloads e da lista de capítulos.
+**Nunca** no pedido, no pagamento, com o livro pausado ou com erro, na
+leitura/revisão, no painel, na entrada, nos termos ou na privacidade — a lista de
+lugares fica em `lib/ads.ts` e um teste (`tests/ads.test.ts`) impede anúncio em outra
+página. Para ligar, é preciso ter criado a senha do painel (sem ela, qualquer pessoa
+poderia trocar o anúncio).
+- **Google AdSense:** o dono cola o código do editor (`ca-pub-…`) e o número do bloco
+  de anúncio. O `/ads.txt` e a verificação do site são criados sozinhos. Precisa do
+  site aberto (sem `APP_PASSWORD`) e dos “Anúncios automáticos” **desligados** no
+  AdSense; vale bloquear anúncios de outros serviços de tradução. O dono logado no
+  painel (com senha criada) não vê os anúncios do Google, para não gerar cliques
+  inválidos. Os anúncios são pedidos como **não personalizados** (sem o histórico de
+  navegação): rendem um pouco menos, mas dispensam o aviso de consentimento de
+  cookies. Anúncios personalizados exigiriam esse aviso (um banner com “aceitar” e
+  “recusar”) antes de carregar o Google.
+- **Patrocinador direto:** título, texto, link, imagem (https) e o nome de quem
+  patrocina; sem cookies do site. A imagem, se houver, vem do endereço do
+  patrocinador, que recebe o endereço IP de quem vê a página (a privacidade avisa).
+- Com os anúncios ligados, `/termos` e `/privacidade` passam a avisar sobre eles (e,
+  no AdSense, sobre os cookies do Google), e a data de “Última atualização” muda.
+  A versão pública não tem anúncios.
+
 ---
 
 ## 1. Estratégia recomendada: créditos + assinatura (híbrido)
 
 | Modelo | A favor | Contra | Para o Verso |
 | --- | --- | --- | --- |
-| Anúncios | Grátis para quem lê | Destrói a sensação premium; receita baixíssima por usuário | Não |
+| Anúncios | Grátis para quem lê | Destrói a sensação premium; receita baixíssima por usuário | Só como extra opcional, discreto e longe da compra (painel → Anúncios) |
 | Só grátis com limite | Ótimo para atrair | Não paga a conta | Só como porta de entrada |
 | Pagamento por livro | Simples de entender | Preço muda muito com o tamanho do livro | Sim, como **créditos avulsos** |
 | Assinatura mensal | Receita previsível | Quem lê 1 livro a cada 3 meses não assina | Sim, para quem traduz sempre |
@@ -141,7 +170,9 @@ experimentar.
 
 Por que funciona: o custo do Verso é proporcional a palavras traduzidas × preço do
 modelo, e o crédito é exatamente essa unidade. O leitor ocasional paga por livro; o
-frequente assina e paga menos por crédito. Ninguém vê anúncio.
+frequente assina e paga menos por crédito. Anúncios não pagam a conta: são só um
+extra opcional, desligado de início e nunca no caminho da compra (veja “Anúncios”
+na seção 0).
 
 ## 2. Estrutura de planos
 
@@ -185,8 +216,8 @@ cerca de R$ 20 avulso ou R$ 16 no Pro. O O.Translator cobra algo na mesma faixa
   3. **liberação** do que sobrou, quando termina ou pausa.
   Um lote só é enviado se a reserva cobre as palavras dele. Assim é impossível gastar
   além do que foi reservado.
-- **O que nunca consome créditos:** traduzir com a **própria chave gratuita** (Gemini,
-  Groq, GitHub). Nesse caso o custo é zero para o Verso. Também não consome a **prévia
+- **O que nunca consome créditos:** traduzir com a **própria chave gratuita** (Gemini
+  ou Groq). Nesse caso o custo é zero para o Verso. Também não consome a **prévia
   grátis**, que é limitada por dia.
 
 ## 4. Cálculo de custo e preço
@@ -296,7 +327,7 @@ dados, faltam limites por IP e por aparelho.
 - Prévia grátis de qualquer livro (limite diário).
 - 15 mil palavras de boas-vindas e 5 mil por mês na qualidade Padrão.
 - Revisão e edição da tradução, glossário, EPUB válido para Kindle e PDF.
-- Tradução ilimitada com a **própria chave gratuita** (Gemini, Groq, GitHub). Custa zero
+- Tradução ilimitada com a **própria chave gratuita** (Gemini ou Groq). Custa zero
   para o Verso e é ótima para quem entende de tecnologia. Recomendo manter: atrai essas
   pessoas sem custo e não concorre com quem quer conveniência.
 

@@ -141,6 +141,8 @@ export interface TranslationRun {
   requests: number;
   /** desses pedidos, quantos foram refeitos (resposta cortada, trechos ou formatação perdidos) */
   retryRequests?: number;
+  /** desses pedidos, quantos o modelo recusou (filtro de segurança ou de citação) */
+  refusedRequests?: number;
   /** trechos resolvidos sem chamar o modelo (sem palavras, ou repetidos no mesmo lote) */
   localSegments?: number;
   inputTokens: number;
@@ -225,6 +227,8 @@ export interface BookMeta {
   totals: { words: number; segments: number; chapters: number };
   progress: BookProgress;
   profile?: BookProfile;
+  /** a análise do livro falhou (sem erro fatal): a próxima execução tenta de novo, uma vez só */
+  analysisFailed?: boolean;
   options: TranslationOptions;
   provider?: { id: string; model: string };
   preview?: BookPreview;

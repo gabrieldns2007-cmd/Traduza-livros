@@ -78,8 +78,10 @@ describe("pipeline", () => {
   it("traduz um capítulo com novas tentativas e glossário", async () => {
     const provider = new FlakyProvider();
     // “leitura atenta” ligada neste teste: cobre também a análise por capítulo
+    // (capítulos curtos não ganham a análise extra; este conta como longo)
     const meta = await store.update(bookId, (m) => {
       m.options.deepContext = true;
+      m.chapters[0].wordCount = 1500;
     });
     await store.updateGlossary(bookId, (e) =>
       e.push({ id: "g1", term: "Captain Reyes", translation: "Capitão Reyes", type: "character", origin: "auto" }),

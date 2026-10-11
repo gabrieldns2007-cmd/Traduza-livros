@@ -6,6 +6,7 @@ import { store } from "@/lib/storage";
 import { BookScreen } from "@/components/book/book-screen";
 import { PUBLIC_MODE } from "@/lib/mode";
 import { PublicBook } from "@/components/public/loaders";
+import { adsFor } from "@/services/ads";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -22,5 +23,7 @@ export default async function BookPage({ params }: Props) {
   const meta = await loadBook(id);
   if (!meta) notFound();
   const glossary = await store.readGlossary(id);
-  return <BookScreen initial={viewOf(meta)} initialGlossary={glossary} />;
+  // publicidade (painel → Anúncios): só durante a tradução e com o livro pronto — nunca no pedido
+  const ads = await adsFor(["traduzindo", "pronto"]);
+  return <BookScreen initial={viewOf(meta)} initialGlossary={glossary} ads={ads} />;
 }

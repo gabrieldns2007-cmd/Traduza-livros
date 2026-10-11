@@ -18,7 +18,8 @@ class CountingProvider implements TranslationProvider {
   id = "fake";
   model = "fake";
   paid = false;
-  limits = { batchChars: 1000, concurrency: 1 };
+  // conta também a moldura <seg id="N"></seg> de cada trecho: cabem 2 capítulos por pedido
+  limits = { batchChars: 1300, concurrency: 1 };
   sent: number[][] = []; // [docIndexHint, segId] não importa: guardamos textos enviados
   texts: string[] = [];
   analyzed: string[] = [];

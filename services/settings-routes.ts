@@ -18,6 +18,8 @@ import { readSettings, writeSettings, type Settings } from "@/lib/storage";
 import { findLanguage } from "@/lib/languages";
 import { quotaFor } from "@/services/quota/usage";
 import { freeServiceBase, PUBLIC_MODE } from "@/lib/mode";
+import { AD_PLACEMENTS, adsProblem, normalizeAds, pickPublisherId, pickSlotId } from "@/lib/ads";
+import { adminProtected } from "@/services/admin/access";
 
 const ENV_KEYS: Record<FreeProviderId, string[]> = {
   gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
@@ -28,6 +30,64 @@ const ENV_KEYS: Record<FreeProviderId, string[]> = {
 function keyOf(id: FreeProviderId, s: Settings) {
   return id === "gemini" ? geminiApiKey(s) : id === "github" ? githubToken(s) : groqApiKey(s);
 }
+
+/** Mensagens dos campos de anúncios, em palavras simples (o painel mostra como estão). */
+const AD_ERRORS = {
+  publisherId: "O código do editor não parece certo: ele começa com ca-pub- e tem 16 algarismos.",
+  slot: "O número do bloco de anúncio tem só algarismos (ex.: 1234567890).",
+  url: "O link do anúncio precisa ser um endereço completo, começando com https://.",
+  imageUrl: "A imagem precisa ser um endereço que começa com https:// (não use http://).",
+  title: "O título pode ter até 80 caracteres.",
+  text: "O texto pode ter até 240 caracteres.",
+  cta: "O texto do link pode ter até 30 caracteres.",
+  sponsor: "O nome do patrocinador pode ter até 60 caracteres.",
+};
+const AD_MESSAGES = new Set(Object.values(AD_ERRORS));
+
+/** Campo do AdSense: aceita o número puro ou o trecho de código colado; "" apaga. */
+const adsenseField = (pick: (s: string) => string | null, error: string) =>
+  z
+    .string()
+    .max(4000, { error })
+    .transform((value, ctx) => {
+      const picked = pick(value);
+      if (picked === null) {
+        ctx.issues.push({ code: "custom", message: error, input: value });
+        return z.NEVER;
+      }
+      return picked;
+    });
+const adSlot = adsenseField(pickSlotId, AD_ERRORS.slot);
+const adText = (max: number, error: string) => z.string().trim().max(max, { error });
+const adUrl = (httpsOnly: boolean, error: string) =>
+  z
+    .string()
+    .trim()
+    .pipe(z.union([z.literal(""), z.url({ protocol: httpsOnly ? /^https$/ : /^https?$/, hostname: z.regexes.domain, error }).max(500, { error })]));
+
+/** Anúncios (painel → Anúncios): validação estrita — só https na imagem, só algarismos no bloco. */
+const AdsBody = z.object({
+  enabled: z.boolean().optional(),
+  source: z.enum(["adsense", "house"]).optional(),
+  adsense: z
+    .object({
+      publisherId: adsenseField(pickPublisherId, AD_ERRORS.publisherId).optional(),
+      slotId: adSlot.optional(),
+      slots: z.partialRecord(z.enum(AD_PLACEMENTS), adSlot).optional(),
+    })
+    .optional(),
+  house: z
+    .object({
+      title: adText(80, AD_ERRORS.title).optional(),
+      text: adText(240, AD_ERRORS.text).optional(),
+      url: adUrl(false, AD_ERRORS.url).optional(),
+      imageUrl: adUrl(true, AD_ERRORS.imageUrl).optional(),
+      cta: adText(30, AD_ERRORS.cta).optional(),
+      sponsor: adText(60, AD_ERRORS.sponsor).optional(),
+    })
+    .optional(),
+  placements: z.partialRecord(z.enum(AD_PLACEMENTS), z.boolean()).optional(),
+});
 
 /**
  * Rotas de Ajustes em dois níveis:
@@ -60,11 +120,12 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
     );
     if (!secrets) {
       // cliente: nada sobre serviços, chaves ou sistema
-      const { routing: _r, offerLiteraria: _o, providerId: _p, checkout: _c, ...prefs } = publicSettings;
+      const { routing: _r, offerLiteraria: _o, providerId: _p, checkout: _c, ads: _a, ...prefs } = publicSettings;
       void _r;
       void _o;
       void _p;
       void _c;
+      void _a;
       return {
         settings: prefs,
         free: [],
@@ -128,13 +189,18 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
         email: z.union([z.literal(""), z.string().max(120).email()]).optional(),
       })
       .optional(),
+    ads: AdsBody.optional(),
     githubModel: z.string().max(80).optional(),
     groqModel: z.string().max(80).optional(),
   });
 
   async function PUT(request: Request) {
     const parsed = Body.safeParse(await request.json().catch(() => null));
-    if (!parsed.success) return fail("Configurações inválidas.");
+    if (!parsed.success) {
+      // anúncios: o painel mostra qual campo está errado
+      const ad = parsed.error.issues.find((i) => i.path[0] === "ads" && AD_MESSAGES.has(i.message));
+      return fail(ad?.message ?? "Configurações inválidas.");
+    }
     const current = await readSettings();
     const b = parsed.data;
     const next: Settings = {
@@ -151,6 +217,15 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
       if (b.offerLiteraria !== undefined) next.offerLiteraria = b.offerLiteraria;
       if (b.checkout) next.checkout = { ...current.checkout, ...b.checkout };
       if (b.business) next.business = { name: b.business.name?.trim() || undefined, email: b.business.email?.trim() || undefined };
+      // anúncios: só no servidor próprio (a versão pública não tem painel nem anúncios)
+      if (b.ads && !PUBLIC_MODE) {
+        const ads = normalizeAds(current.ads, b.ads);
+        const problem = adsProblem(ads);
+        if (problem) return fail(problem);
+        // sem a senha do painel, qualquer pessoa poderia publicar um anúncio para os clientes (desligar continua livre)
+        if (ads.enabled && !(await adminProtected())) return fail("Crie a senha do painel antes de ligar os anúncios.");
+        next.ads = ads;
+      }
     }
     for (const id of secrets ? FREE_PROVIDERS : []) {
       const keyField = FREE_KEY_FIELDS[id];
