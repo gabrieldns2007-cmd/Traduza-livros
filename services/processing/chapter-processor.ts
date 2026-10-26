@@ -6,8 +6,11 @@
  *   capítulo marcado como concluído assim que todos os seus trechos estão salvos
  *
  * Economia: cada pedido leva só o glossário relevante ao trecho, os últimos
- * resumos e 3 parágrafos anteriores; nomes novos vêm junto da tradução (sem
- * chamada extra por capítulo); nada já traduzido é reenviado. Além disso:
+ * resumos e 3 parágrafos anteriores (até 8 no começo de um capítulo ou quando
+ * o modelo mudou: a “ponte” que mantém a voz e o tratamento, do tamanho que cabe
+ * nos pedidos do serviço); nomes novos vêm
+ * junto da tradução (sem chamada extra por capítulo); nada já traduzido é
+ * reenviado. Além disso:
  *  - trechos sem palavras (números, “* * *”, marcas de nota) ficam como estão,
  *    sem ir ao modelo, e trechos idênticos no mesmo lote vão uma vez só;
  *  - resposta cortada no limite de saída ou recusada no meio: os trechos que
@@ -16,12 +19,18 @@
  *  - erro temporário no meio de um lote: só o que ainda falta é reenviado;
  *  - erro fatal (ex.: cota do dia): o que já voltou é gravado antes de parar;
  *  - poesia: até `maxSegments` versos por pedido, e quebras de verso trocadas
- *    por quebras de linha voltam ao lugar sem nova tentativa.
+ *    por quebras de linha voltam ao lugar sem nova tentativa;
+ *  - qualidade (lib/quality.ts): cada trecho é conferido antes de gravar (voltou
+ *    sem traduzir, em outro idioma, com pedaços do pedido, com comentários…); o
+ *    que falha vai numa única nova tentativa com o motivo no pedido, e a mesma
+ *    tradução para trechos diferentes divide o pedido uma vez;
+ *  - cada trecho gravado guarda quem o traduziu (`by`, “provedor/modelo”).
  */
 import type { BookActivity, BookMeta, ChapterMeta, DocContent, Segment } from "@/types/book";
 import { store } from "@/lib/storage";
 import { appendMissingVoids, repairMarkup, restoreLineBreaks, tagKeys, toPlainText } from "@/lib/markup";
 import { languageEnglishName } from "@/lib/languages";
+import { checkSegment, repeatedOutputs, stripStrayTags, type QualityContext } from "@/lib/quality";
 import { mergeCandidates, relevantEntries } from "@/services/glossary/glossary";
 import type { BatchSegment, BookContext, ProviderLimits, TranslationProvider } from "@/services/translation/translation-provider";
 import { ProviderError } from "@/services/translation/llm/types";
@@ -47,6 +56,8 @@ export interface ProcessorHooks {
   onActivity?: (activity: BookActivity | null) => void;
   /** antes de cada lote (palavras de origem): pode interromper (ex.: créditos acabaram) */
   beforeBatch?: (words: number) => Promise<void>;
+  /** quem traduz nesta execução (“provedor/modelo”): gravado em cada trecho (`by`) */
+  engine?: string;
 }
 
 export function bookContext(meta: BookMeta): BookContext {
@@ -74,6 +85,24 @@ export const SEG_WRAPPER_CHARS = 21;
 
 /** Trechos por pedido quando o provedor não define outro número. */
 const DEFAULT_MAX_SEGMENTS = 120;
+
+/** Parágrafos anteriores que vão como contexto em cada pedido. */
+const PRECEDING_PARAGRAPHS = 3;
+
+/** “Ponte” no começo de um capítulo ou quando o modelo mudou: mais parágrafos anteriores, até este total de caracteres. */
+export const BRIDGE_PARAGRAPHS = 8;
+const BRIDGE_CHARS = 3600;
+/** Os 3 parágrafos comuns (até 600 caracteres cada): a ponte nunca é menor que isso. */
+const BRIDGE_MIN_CHARS = 1800;
+
+/**
+ * Tamanho da ponte, proporcional ao pedido: num serviço de pedidos pequenos (Groq, 5000
+ * caracteres; limite de 8 mil tokens por minuto contando os 4000 reservados para a saída)
+ * ela fica do tamanho do contexto comum; com pedidos grandes (Gemini), 3600 caracteres.
+ */
+export function bridgeChars(limits: ProviderLimits): number {
+  return Math.max(BRIDGE_MIN_CHARS, Math.min(BRIDGE_CHARS, Math.round(limits.batchChars * 0.36)));
+}
 
 /** “Leitura atenta”: capítulos com menos palavras que isso (uma dedicatória, uma epígrafe) não ganham o pedido extra. */
 export const DEEP_CONTEXT_MIN_WORDS = 300;
@@ -156,7 +185,10 @@ async function analyzeChapter(meta: BookMeta, chapter: ChapterMeta, range: Segme
       if (result.usage) await hooks.onUsage(result.usage);
       if (result.newTerms.length) await store.updateGlossary(meta.id, (entries) => mergeCandidates(entries, result.newTerms));
     } catch (err) {
-      if (err instanceof ProviderError && err.fatal) throw err;
+      // resposta cortada ou ilegível: não serviu, mas os tokens já foram gastos e entram na conta
+      if (err instanceof ProviderError && err.usage) await hooks.onUsage(err.usage);
+      // um 400 pontual na análise do capítulo não para a tradução
+      if (err instanceof ProviderError && err.fatal && err.code !== "bad_request") throw err;
       if (hooks.signal.aborted) throw err;
       console.warn(`[processor] análise do capítulo ${chapter.id} falhou; seguindo sem ela`, err);
     }
@@ -241,6 +273,38 @@ export function hasWords(src: string): boolean {
   return /\p{L}/u.test(toPlainText(src));
 }
 
+/**
+ * Parágrafos anteriores já traduzidos (continuidade de voz e de tratamento). No meio de
+ * um capítulo, os 3 últimos. A “ponte” — até 8, cruzando para o fim do capítulo anterior
+ * quando o lote começa um capítulo — entra quando nada do capítulo foi traduzido ainda ou
+ * quando o trecho anterior foi feito por outro modelo (troca de serviço no meio do livro).
+ */
+async function precedingContext(bookId: string, meta: BookMeta, first: Item, engine: string | undefined, budget: number): Promise<string[]> {
+  const plain = (segs: Segment[]) => segs.map((s) => truncate(toPlainText(s.out!), 600));
+  const before = first.doc.segments.slice(first.chapter.start, first.seg.i).filter((s) => s.out !== undefined && hasWords(s.src));
+  const last = before[before.length - 1];
+  if (last && (!engine || last.by === engine)) {
+    return plain(first.doc.segments.slice(Math.max(first.chapter.start, first.seg.i - PRECEDING_PARAGRAPHS), first.seg.i).filter((s) => s.out));
+  }
+  let pool = before;
+  if (!last) {
+    // começo do capítulo: o fim do capítulo anterior
+    const idx = meta.chapters.findIndex((c) => c.id === first.chapter.id);
+    const prev = idx > 0 ? meta.chapters[idx - 1] : undefined;
+    if (!prev) return [];
+    const doc = prev.docId === first.chapter.docId ? first.doc : await store.readDoc(bookId, prev.docId).catch(() => null);
+    pool = doc ? doc.segments.slice(prev.start, prev.end).filter((s) => s.out !== undefined && hasWords(s.src)) : [];
+  }
+  const out: string[] = [];
+  let chars = 0;
+  for (const text of plain(pool.slice(-BRIDGE_PARAGRAPHS)).reverse()) {
+    if (out.length && chars + text.length > budget) break;
+    out.unshift(text);
+    chars += text.length;
+  }
+  return out;
+}
+
 async function translateBatch(bookId: string, batch: Item[], provider: TranslationProvider, hooks: ProcessorHooks) {
   const meta = (await store.get(bookId))!;
   const book = bookContext(meta);
@@ -256,12 +320,14 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
     .map((c) => `- ${c.translatedTitle || c.title}: ${c.summary}`);
   const titles = [...new Set(batch.map((it) => it.chapter.title))];
   const chapterSummary = titles.length === 1 ? meta.chapters[firstIdx]?.summary || undefined : undefined;
+  const preceding = await precedingContext(bookId, meta, first, hooks.engine, bridgeChars(provider.limits));
 
-  // parágrafos anteriores já traduzidos (continuidade de voz e de tratamento)
-  const preceding = first.doc.segments
-    .slice(Math.max(first.chapter.start, first.seg.i - 3), first.seg.i)
-    .filter((s) => s.out)
-    .map((s) => truncate(toPlainText(s.out!), 600));
+  // conferência de cada trecho antes de gravar (a de idioma, só para modelos de verdade)
+  const quality: QualityContext = {
+    sourceLang: meta.sourceLanguage ?? meta.detectedLanguage ?? null,
+    targetLang: meta.targetLanguage,
+    languageChecks: !!provider.checkLanguage,
+  };
 
   // ids locais 1..n: trechos de arquivos diferentes podem ter o mesmo índice
   const local = new Map<number, Item>();
@@ -270,6 +336,10 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
 
   const results = new Map<Item, string>();
   const failed = new Set<Item>();
+  /** por que a última resposta de um trecho não serviu (vai no pedido da nova tentativa; fica anotado se falhar) */
+  const reasons = new Map<Item, string>();
+  /** avisos dos trechos aceitos (tamanho fora do comum, formatação perdida…) */
+  const warns = new Map<Item, string[]>();
 
   // sem palavras: fica igual ao original; repetido no lote: vai ao modelo uma vez só
   const toSend: Item[] = [];
@@ -288,21 +358,48 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
     }
   }
 
-  /** Aceita a tradução de um trecho se ela veio inteira e com a formatação; senão devolve false. */
+  const reject = (it: Item, reason: string) => {
+    reasons.set(it, reason);
+    return false;
+  };
+
+  /**
+   * Aceita a tradução de um trecho se ela veio inteira, com a formatação e passou na
+   * conferência de qualidade; senão anota o motivo e devolve false.
+   */
   const accept = (it: Item, raw: string | undefined, strict: boolean): boolean => {
-    if (raw === undefined || (!raw.trim() && it.seg.src.trim())) return false;
+    if (raw === undefined || (!raw.trim() && it.seg.src.trim())) return reject(it, raw === undefined ? "missing" : "empty");
     const repaired = repairMarkup(raw, it.doc.tags, tagKeys(it.seg.src));
     // quebras de verso trocadas por quebras de linha voltam ao lugar (sem nova tentativa)
     const { markup, missing } = repaired.missing.length ? restoreLineBreaks(repaired.markup, repaired.missing, it.doc.tags) : repaired;
-    if (missing.length && !strict) return false;
-    results.set(it, missing.length ? appendMissingVoids(markup, missing, it.doc.tags) : markup);
+    if (missing.length && !strict) return reject(it, "tags");
+    let final = missing.length ? appendMissingVoids(markup, missing, it.doc.tags) : markup;
+    let check = checkSegment(it.seg.src, final, quality);
+    const extra: string[] = [];
+    if (check.hard === "stray-tag" && strict) {
+      // ainda com <em> ou *ênfase* soltos na nova tentativa: tira as marcas (nunca grava tags literais no livro)
+      final = stripStrayTags(final);
+      check = checkSegment(it.seg.src, final, quality);
+      extra.push("stray-tag");
+    }
+    if (check.hard) return reject(it, check.hard);
+    results.set(it, final);
+    reasons.delete(it);
+    const w = [...new Set([...extra, ...check.soft])];
+    if (w.length) warns.set(it, w);
+    else warns.delete(it);
     return true;
   };
 
-  /** `refusals`: quantas vezes este pedaço já foi dividido por causa de uma recusa */
-  const attempt = async (its: Item[], strict: boolean, depth: number, refusals = 0): Promise<void> => {
+  /**
+   * `refusals`: quantas vezes este pedaço já foi dividido por causa de uma recusa;
+   * `realigned`: já foi dividido porque o modelo se perdeu na ordem dos trechos
+   */
+  const attempt = async (its: Item[], strict: boolean, depth: number, refusals = 0, realigned = false): Promise<void> => {
     const segments: BatchSegment[] = its.map((it) => ({ id: idOf.get(it)!, text: it.seg.src }));
     const chapterCount = new Set(its.map((it) => it.chapter.id)).size;
+    // na nova tentativa, o pedido diz o que deu errado na anterior
+    const issues = strict ? [...new Set(its.map((it) => reasons.get(it)).filter((r): r is string => !!r))] : [];
     hooks.onActivity?.({ kind: "request", since: new Date().toISOString(), chapters: chapterCount });
     const out = await provider.translateBatch({
       book: { ...book, profile: meta.profile },
@@ -313,6 +410,7 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
       preceding,
       segments,
       strict,
+      ...(issues.length ? { issues } : {}),
       signal: hooks.signal,
       onWait: (ms) => {
         const now = Date.now();
@@ -321,39 +419,55 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
         setTimeout(() => hooks.onActivity?.({ kind: "request", since: new Date().toISOString(), chapters: chapterCount }), ms).unref?.();
       },
     });
+    // a mesma tradução para trechos diferentes: o modelo se perdeu na ordem. Esses trechos
+    // voltam na nova tentativa; na nova tentativa, a repetição é aceita (pode ser legítima)
+    const repeated = repeatedOutputs(its.map((it) => ({ src: it.seg.src, out: out.translations.get(idOf.get(it)!) })));
+    const take = (it: Item, i: number) =>
+      !strict && repeated.indexes.has(i) ? reject(it, "misaligned") : accept(it, out.translations.get(idOf.get(it)!), strict);
     try {
       await hooks.onUsage(out.usage, { retry: strict || depth > 0, refused: out.refused });
     } catch (stop) {
       // parada pelo registro (ex.: gasto acima do previsto): esta resposta já foi paga, então o que
       // veio completo nela também é gravado antes de parar
-      for (const it of its) accept(it, out.translations.get(idOf.get(it)!), strict);
+      its.forEach((it, i) => take(it, i));
       throw stop;
     }
     if (out.newTerms?.length) await store.updateGlossary(bookId, (entries) => mergeCandidates(entries, out.newTerms!));
 
+    // vários trechos (2 ou mais, e ao menos 1 em cada 10) com a tradução de outro: nada desta
+    // resposta é confiável (pode estar tudo deslocado); divide o pedido ao meio, uma vez só.
+    // Repetições raras (um refrão num pedido de 400 versos) só voltam na nova tentativa
+    if (!strict && !realigned && repeated.cases >= 2 && repeated.cases * 10 >= its.length && its.length > 1) {
+      for (const i of repeated.indexes) reasons.set(its[i], "misaligned");
+      const mid = Math.ceil(its.length / 2);
+      await attempt(its.slice(0, mid), false, depth + 1, refusals, true);
+      await attempt(its.slice(mid), false, depth + 1, refusals, true);
+      return;
+    }
+
     // resposta cortada no limite de saída: aproveita os trechos que vieram completos
     // e pede só o resto (em metades, se ainda for muito)
     if (out.truncated && its.length > 1 && depth < 4) {
-      const rest = its.filter((it) => !accept(it, out.translations.get(idOf.get(it)!), strict));
+      const rest = its.filter((it, i) => !take(it, i));
       if (!rest.length) return;
       if (rest.length < its.length && rest.length <= Math.ceil(its.length / 2)) {
-        await attempt(rest, strict, depth + 1, refusals);
+        await attempt(rest, strict, depth + 1, refusals, realigned);
         return;
       }
       const mid = Math.ceil(rest.length / 2);
-      await attempt(rest.slice(0, mid), strict, depth + 1, refusals);
-      await attempt(rest.slice(mid), strict, depth + 1, refusals);
+      await attempt(rest.slice(0, mid), strict, depth + 1, refusals, realigned);
+      await attempt(rest.slice(mid), strict, depth + 1, refusals, realigned);
       return;
     }
 
     // o que veio completo fica (inclusive numa resposta recusada no meio)
-    const rest = its.filter((it) => !accept(it, out.translations.get(idOf.get(it)!), strict));
+    const rest = its.filter((it, i) => !take(it, i));
     if (!rest.length) return;
-    // recusada (filtro de segurança ou de citação) antes do fim: divide só o resto em dois, no
-    // máximo 2 vezes. O motivo está no trecho em que a resposta parou (não num trecho anterior que
-    // o modelo pulou ou devolveu sem a formatação): o capítulo dele vai separado dos seguintes, que
-    // não têm culpa; se nada voltou, divide ao meio. Se todos os trechos voltaram (recusa só no fim), não divide:
-    // o que perdeu a formatação vai junto na nova tentativa abaixo
+    // recusada (filtro de segurança ou de citação, ou “desculpe, não posso” no texto) antes do fim:
+    // divide só o resto em dois, no máximo 2 vezes. O motivo está no trecho em que a resposta parou
+    // (não num trecho anterior que o modelo pulou ou devolveu sem a formatação): o capítulo dele vai
+    // separado dos seguintes, que não têm culpa; se nada voltou, divide ao meio. Se todos os trechos
+    // voltaram (recusa só no fim), não divide: o que perdeu a formatação vai junto na nova tentativa abaixo
     let lastBack = -1; // último trecho que voltou na resposta
     its.forEach((it, i) => {
       if (out.translations.has(idOf.get(it)!)) lastBack = i;
@@ -363,14 +477,15 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
       const after = new Set(its.slice(lastBack + 1));
       const next = culprit ? rest.findIndex((it) => after.has(it) && it.chapter.id !== culprit) : -1;
       const mid = next > 0 ? next : Math.ceil(rest.length / 2);
-      await attempt(rest.slice(0, mid), strict, depth + 1, refusals + 1);
-      await attempt(rest.slice(mid), strict, depth + 1, refusals + 1);
+      await attempt(rest.slice(0, mid), strict, depth + 1, refusals + 1, realigned);
+      await attempt(rest.slice(mid), strict, depth + 1, refusals + 1, realigned);
       return;
     }
-    // faltou ou perdeu a formatação (itálico, notas…): só esses trechos voltam, numa única
-    // chamada extra; se falharem de novo, ficam marcados para revisão
+    // faltou, perdeu a formatação ou não passou na conferência (voltou sem traduzir, em outro
+    // idioma, com comentários…): só esses trechos voltam, numa única chamada extra com o motivo;
+    // se falharem de novo, ficam marcados para revisão
     if (strict) for (const it of rest) failed.add(it);
-    else await attempt(rest, true, depth + 1, refusals);
+    else await attempt(rest, true, depth + 1, refusals, realigned);
   };
 
   /** Grava imediatamente, arquivo por arquivo (relê dentro do lock para não perder edições). */
@@ -394,13 +509,24 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
           if (!seg || seg.edited) continue;
           const d = perChapter.get(it.chapter.id) ?? { words: 0, segments: 0, failed: 0 };
           const translated = results.get(it);
+          const origin = copyOf.get(it) ?? it;
           if (translated !== undefined) {
             seg.out = translated;
             delete seg.failed;
+            // quem traduziu; trecho sem palavras fica como no original (nenhum modelo mexeu nele)
+            if (hooks.engine && (sent.has(it) || copyOf.has(it))) seg.by = hooks.engine;
+            else delete seg.by;
+            const w = warns.get(origin);
+            if (w?.length) seg.warn = w;
+            else delete seg.warn;
             d.words += seg.words;
             d.segments++;
           } else if (failed.has(it)) {
             seg.failed = true;
+            delete seg.by;
+            const r = reasons.get(origin);
+            if (r) seg.warn = [r];
+            else delete seg.warn;
             d.failed++;
           }
           perChapter.set(it.chapter.id, d);
@@ -428,13 +554,15 @@ async function translateBatch(bookId: string, batch: Item[], provider: Translati
       if (!fatal) transient++;
       // limite por minuto ou provedor sobrecarregado: espera mais antes de desistir
       const isRate = err instanceof ProviderError && (err.code === "rate_limit" || err.code === "server");
-      if (fatal || transient > (isRate ? 6 : 3)) {
+      const wait = Math.min(15000 * 2 ** (transient - 1), 5 * 60_000);
+      // o serviço pediu para esperar mais do que a próxima tentativa: parar já (sem gastar pedidos à toa)
+      const asksLonger = err instanceof ProviderError && err.retryAt !== undefined && err.retryAt - Date.now() > wait;
+      if (fatal || asksLonger || transient > (isRate ? 6 : 3)) {
         // antes de parar (ex.: a cota do dia acabou), grava o que já voltou: esses pedidos já foram gastos
         hooks.onActivity?.(null);
         await save().catch((e) => console.warn("[processor] não foi possível gravar o que já tinha voltado", e));
         throw err;
       }
-      const wait = Math.min(15000 * 2 ** (transient - 1), 5 * 60_000);
       console.warn(`[processor] erro temporário (tentativa ${transient}); aguardando ${wait / 1000}s`, err);
       const now = Date.now();
       hooks.onActivity?.({ kind: "waiting", since: new Date(now).toISOString(), until: new Date(now + wait).toISOString() });

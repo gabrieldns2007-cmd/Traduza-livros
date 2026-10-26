@@ -71,6 +71,11 @@ export interface BatchInput {
   segments: BatchSegment[];
   /** reforço quando é uma nova tentativa (tags perdidas, segmentos faltando) */
   strict?: boolean;
+  /**
+   * por que é uma nova tentativa: códigos de lib/quality.ts ("echo", "leak", "wrong-language"…)
+   * e do processador ("missing", "tags", "misaligned"). O pedido diz o que corrigir.
+   */
+  issues?: string[];
   signal?: AbortSignal;
   /** chamado quando o provedor precisa esperar um limite (ms) */
   onWait?: (ms: number) => void;
@@ -96,6 +101,11 @@ export interface ProviderLimits {
   maxSegments?: number;
   /** pedidos simultâneos */
   concurrency: number;
+  /**
+   * teto de tokens de saída por pedido, quando o serviço tem um teto baixo (ex.: Groq, 4000):
+   * a análise do livro pede menos nomes, para a resposta não ser cortada no meio
+   */
+  maxOutputTokens?: number;
 }
 
 export interface TranslationProvider {
@@ -104,6 +114,12 @@ export interface TranslationProvider {
   /** pode gerar cobrança */
   readonly paid: boolean;
   readonly limits: ProviderLimits;
+  /**
+   * a saída vem de um modelo de tradução de verdade: além da formatação, cada trecho passa
+   * pela conferência de idioma (voltou igual ao original, ficou no idioma de origem) antes
+   * de ser gravado. O provedor de demonstração devolve o original de propósito e não liga isto.
+   */
+  readonly checkLanguage?: boolean;
   analyzeBook(input: BookAnalysisInput, signal?: AbortSignal): Promise<BookAnalysis & { usage?: BatchOutput["usage"] }>;
   analyzeChapter(input: ChapterAnalysisInput, signal?: AbortSignal): Promise<ChapterAnalysis & { usage?: BatchOutput["usage"] }>;
   translateBatch(input: BatchInput): Promise<BatchOutput>;

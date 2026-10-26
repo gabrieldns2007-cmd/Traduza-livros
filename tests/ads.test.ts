@@ -134,7 +134,8 @@ describe("configuração pelo painel", () => {
     // rascunho com tudo desligado: sem data
     expect(normalizeAds(undefined, { adsense: { publisherId: `ca-pub-${PUB}` } }).updatedAt).toBeUndefined();
     expect(legalUpdated(undefined)).toBe(LEGAL_UPDATED);
-    expect(LEGAL_UPDATED).toBe("8 de outubro de 2026");
+    // 19/10/2026: termos e privacidade ganharam a seção da tradução Grátis
+    expect(LEGAL_UPDATED).toBe("26 de outubro de 2026");
     expect(legalUpdated("2026-11-04T12:00:00.000Z")).toBe("4 de novembro de 2026");
   });
 

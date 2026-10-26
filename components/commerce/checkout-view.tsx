@@ -59,7 +59,7 @@ export function CheckoutView({ bookId }: { bookId: string }) {
             <Check className="h-6 w-6" />
           </span>
           <h1 className="serif mt-6 text-[2rem] leading-tight tracking-[-0.02em] text-ink">
-            {offer?.order?.payment === "beta" ? "Pedido confirmado." : "Pagamento confirmado."}
+            {offer?.order?.payment === "provider" ? "Pagamento confirmado." : "Pedido confirmado."}
           </h1>
           <p className="mt-2 text-[1.0625rem] text-ink-2">Estamos preparando sua tradução.</p>
           {offer && <p className="serif mt-6 text-[1.125rem] text-ink italic">{offer.title}</p>}

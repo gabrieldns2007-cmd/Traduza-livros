@@ -42,7 +42,8 @@ ficam marcados como falhos (312 contra 178 no teste), em vez de 4 vezes mais ped
 de cliente, a revisão automática do fim pede esses trechos de novo.
 
 O **GitHub Models** foi encerrado pelo GitHub em 30/07/2026: saiu da ordem padrão da tradução
-Padrão e um token salvo nunca é usado. Os serviços gratuitos são o Gemini e o Groq.
+Padrão e um token salvo nunca é usado. Os serviços gratuitos da tradução Grátis são o Gemini,
+o Groq, a Cloudflare (Workers AI) e a Mistral (modo Free), em rodízio automático.
 
 ## Referências
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type CSSProperties, type ReactNode } from "react";
-import { OPERATIONS, priceFor, SERVICE_LEVELS, type ServiceLevelId } from "@/lib/billing/pricing";
+import { OPERATIONS, priceFor, priceLabel, SERVICE_LEVELS, type ServiceLevelId } from "@/lib/billing/pricing";
 import { brl } from "@/lib/money";
 import { Check } from "@/components/ui/icons";
 import styles from "./edition-configurator.module.css";
@@ -39,7 +39,7 @@ function Step({ n, kicker, title, children }: { n: number; kicker: string; title
 /**
  * “Monte a sua edição”: o tipo de livro, o tamanho e o tipo de tradução —
  * com o valor estimado sempre à vista antes do botão. O cálculo é o mesmo
- * da tela de confirmação (`priceFor`).
+ * da tela de confirmação (`priceFor`): a Grátis é R$ 0 em qualquer tamanho.
  *
  * `action` é o botão final (enviar o livro), vindo da página.
  */
@@ -50,7 +50,7 @@ export function EditionConfigurator({ literariaAvailable, action }: { literariaA
   const kind = BOOK_KINDS.find((k) => words <= k.upTo) ?? BOOK_KINDS[BOOK_KINDS.length - 1];
   const fill = ((words - MIN_WORDS) / (MAX_WORDS - MIN_WORDS)) * 100;
   const chosen = SERVICE_LEVELS.find((l) => l.id === level) ?? SERVICE_LEVELS[0];
-  const available = (id: ServiceLevelId) => id === "padrao" || literariaAvailable;
+  const available = (id: ServiceLevelId) => Boolean(SERVICE_LEVELS.find((l) => l.id === id)?.free) || literariaAvailable;
 
   return (
     <div className="space-y-10">
@@ -138,7 +138,7 @@ export function EditionConfigurator({ literariaAvailable, action }: { literariaA
                   <span className="flex items-baseline justify-between gap-3">
                     <span className={`text-[1.0625rem] font-medium ${on ? "text-ink" : "text-ink-2"}`}>Tradução {l.label}</span>
                     {on ? (
-                      <span className="serif num shrink-0 text-[1.375rem] leading-none text-ink">{brl(priceFor(words, l.id))}</span>
+                      <span className="serif num shrink-0 text-[1.375rem] leading-none text-ink">{priceLabel(priceFor(words, l.id))}</span>
                     ) : (
                       <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-1 text-[0.75rem] leading-none font-medium text-accent">
                         Em breve
@@ -170,21 +170,23 @@ export function EditionConfigurator({ literariaAvailable, action }: { literariaA
             <p className="text-[1rem] text-ink">Seu orçamento</p>
             <p className="serif num shrink-0 text-[2.5rem] leading-none tracking-[-0.025em] text-ink max-[300px]:text-[2.125rem]" aria-live="polite">
               <span key={`${level}-${kind.id}`} className={styles.settle}>
-                {brl(priceFor(words, chosen.id))}
+                {priceLabel(priceFor(words, chosen.id))}
               </span>
             </p>
           </div>
           <p className="mt-2 text-[0.8125rem] leading-relaxed text-muted">
-            Calculado pelo tamanho do livro, a partir de {brl(OPERATIONS.minimumBrl)}.
+            {chosen.free
+              ? "Grátis de verdade, sem cartão. Pode levar mais tempo: depende da disponibilidade dos serviços gratuitos."
+              : `Calculado pelo tamanho do livro, a partir de ${brl(OPERATIONS.minimumBrl)}.`}
           </p>
         </div>
 
         {action && <div className="mt-6 [&_button]:w-full">{action}</div>}
 
         <p className="mt-4 text-center text-[0.8125rem] leading-relaxed text-muted">
-          Você verá o valor exato antes de continuar.
+          {chosen.free ? "Nada é cobrado." : "Você verá o valor exato antes de continuar."}
           <br />
-          Sem assinatura · Sem cobranças recorrentes
+          {chosen.free ? "Sem cartão · Sem assinatura" : "Sem assinatura · Sem cobranças recorrentes"}
         </p>
       </div>
     </div>

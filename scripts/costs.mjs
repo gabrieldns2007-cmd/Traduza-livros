@@ -8,6 +8,10 @@
  *
  * Use o “custo por mil palavras” observado para recalibrar lib/billing/cost-model.ts
  * e os créditos por mil palavras de cada qualidade em lib/billing/catalog.ts.
+ *
+ * Também mostra quem traduziu cada livro, trecho a trecho (Segment.by =
+ * “serviço/modelo”), quando o registro existe: útil quando a tradução grátis
+ * passou por vários serviços.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -31,7 +35,30 @@ console.log(
 
 const usd = (v) => `US$ ${v.toFixed(v < 1 ? 4 : 2)}`;
 const byModel = new Map();
+/** palavras traduzidas por “serviço/modelo”, somando todos os livros */
+const byEngine = new Map();
 let anyRun = false;
+
+/** Palavras traduzidas de um livro por quem traduziu (só leitura dos arquivos de trechos). */
+function enginesOf(bookDir) {
+  const out = new Map();
+  const docsDir = path.join(bookDir, "docs");
+  if (!fs.existsSync(docsDir)) return out;
+  for (const f of fs.readdirSync(docsDir).filter((x) => x.endsWith(".json"))) {
+    let doc;
+    try {
+      doc = JSON.parse(fs.readFileSync(path.join(docsDir, f), "utf8"));
+    } catch {
+      continue;
+    }
+    for (const s of doc.segments ?? []) {
+      if (s.out === undefined) continue;
+      const who = s.edited ? "(editado à mão)" : (s.by ?? "(sem registro)");
+      out.set(who, (out.get(who) ?? 0) + (s.words ?? 0));
+    }
+  }
+  return out;
+}
 
 for (const id of fs.readdirSync(booksDir).sort()) {
   const f = path.join(booksDir, id, "book.json");
@@ -46,6 +73,14 @@ for (const id of fs.readdirSync(booksDir).sort()) {
   if (!runs.length) continue;
   anyRun = true;
   console.log(`\n${meta.title}  (${id})`);
+  const engines = enginesOf(path.join(booksDir, id));
+  if ([...engines.keys()].some((k) => !k.startsWith("("))) {
+    const total = [...engines.values()].reduce((a, b) => a + b, 0) || 1;
+    for (const [who, words] of [...engines].sort((a, b) => b[1] - a[1])) {
+      console.log(`  quem traduziu: ${who.padEnd(40)} ${String(words).padStart(8)} palavras  (${Math.round((words / total) * 100)}%)`);
+      if (!who.startsWith("(")) byEngine.set(who, (byEngine.get(who) ?? 0) + words);
+    }
+  }
   for (const r of runs) {
     const cost = r.costUsd ?? 0;
     const per1k = r.words ? (cost / r.words) * 1000 : 0;
@@ -78,6 +113,11 @@ for (const id of fs.readdirSync(booksDir).sort()) {
 if (!anyRun) {
   console.log("Ainda não há execuções registradas (elas passam a ser gravadas a partir desta versão).");
   process.exit(0);
+}
+
+if (byEngine.size) {
+  console.log("\nQuem traduziu (palavras, todos os livros)");
+  for (const [who, words] of [...byEngine].sort((a, b) => b[1] - a[1])) console.log(`  ${who.padEnd(40)} ${words} palavras`);
 }
 
 console.log("\nPor modelo (observado)");

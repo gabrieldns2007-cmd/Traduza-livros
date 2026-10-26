@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 
 /** Quando o texto dos termos e da privacidade mudou pela última vez (a única data a atualizar). */
-const LEGAL_UPDATED_AT = "2026-10-08T12:00:00-03:00";
+// 19/10/2026: tradução Grátis (serviços de IA gratuitos de terceiros) e Literária (serviço pago)
+// 26/10/2026: 18 anos ou mais; Grátis fora do EEE, da Suíça e do Reino Unido; os serviços gratuitos pelo nome; a amostra
+const LEGAL_UPDATED_AT = "2026-10-26T12:00:00-03:00";
 
 /** Data por extenso, no horário de Brasília (ex.: “8 de outubro de 2026”). */
 const longDate = (t: number) =>

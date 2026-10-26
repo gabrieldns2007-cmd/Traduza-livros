@@ -1,6 +1,9 @@
 import { z } from "zod";
 import { fail, json } from "@/lib/api";
 import {
+  cloudflareAccountId,
+  cloudflareApiToken,
+  cloudflareBaseUrl,
   config,
   defaultProviderId,
   FREE_KEY_FIELDS,
@@ -8,15 +11,23 @@ import {
   FREE_MODELS,
   FREE_PROVIDERS,
   geminiApiKey,
+  GITHUB_RETIRED_MESSAGE,
   githubToken,
   groqApiKey,
+  MISTRAL_BASE_URL,
+  mistralApiKey,
+  PROVIDER_SECRET_FIELDS,
   providerConfigs,
   type FreeProviderId,
 } from "@/lib/config";
 import { authEnabled } from "@/lib/auth";
 import { readSettings, writeSettings, type Settings } from "@/lib/storage";
 import { findLanguage } from "@/lib/languages";
-import { quotaFor } from "@/services/quota/usage";
+import { clearExhausted, quotaFor } from "@/services/quota/usage";
+import { clearProvider, healthOf } from "@/services/providers/health";
+import { foreignIds } from "@/services/commerce/routing";
+import { jobRunner } from "@/services/processing/job-runner";
+import { cloudflareError } from "@/services/translation/llm/free-openai";
 import { freeServiceBase, PUBLIC_MODE } from "@/lib/mode";
 import { AD_PLACEMENTS, adsProblem, normalizeAds, pickPublisherId, pickSlotId } from "@/lib/ads";
 import { adminProtected } from "@/services/admin/access";
@@ -25,11 +36,29 @@ const ENV_KEYS: Record<FreeProviderId, string[]> = {
   gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
   github: ["GITHUB_MODELS_TOKEN"],
   groq: ["GROQ_API_KEY"],
+  cloudflare: ["CLOUDFLARE_API_TOKEN"],
+  mistral: ["MISTRAL_API_KEY"],
+};
+
+const KEY_OF: Record<FreeProviderId, (s: Settings) => string> = {
+  gemini: geminiApiKey,
+  github: githubToken,
+  groq: groqApiKey,
+  cloudflare: cloudflareApiToken,
+  mistral: mistralApiKey,
 };
 
 function keyOf(id: FreeProviderId, s: Settings) {
-  return id === "gemini" ? geminiApiKey(s) : id === "github" ? githubToken(s) : groqApiKey(s);
+  return KEY_OF[id](s);
 }
+
+/** Pronto para traduzir: a Cloudflare precisa do token E do ID da conta. */
+function configured(id: FreeProviderId, s: Settings) {
+  return Boolean(keyOf(id, s)) && (id !== "cloudflare" || Boolean(cloudflareAccountId(s)));
+}
+
+/** Tudo o que identifica uma conta ou escolhe um modelo: o cliente não vê nada disso. */
+const PROVIDER_FIELDS = [...PROVIDER_SECRET_FIELDS, ...Object.values(FREE_MODEL_FIELDS)] as const;
 
 /** Mensagens dos campos de anúncios, em palavras simples (o painel mostra como estão). */
 const AD_ERRORS = {
@@ -99,27 +128,12 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
   async function payload() {
     const settings = await readSettings();
     const configs = providerConfigs(settings);
-    // as chaves nunca voltam para o navegador: só os 4 últimos caracteres
+    // as chaves (e o ID da conta da Cloudflare) nunca voltam para o navegador: só os 4 últimos caracteres
     const publicSettings: Partial<Settings> = { ...settings };
-    for (const field of Object.values(FREE_KEY_FIELDS)) delete publicSettings[field];
-    const free = await Promise.all(
-      FREE_PROVIDERS.map(async (id) => {
-        const key = keyOf(id, settings);
-        const cfg = configs.find((p) => p.id === id)!;
-        return {
-          id,
-          label: cfg.label,
-          hasKey: Boolean(key),
-          keyHint: key ? `••••${key.slice(-4)}` : "",
-          fromEnv: ENV_KEYS[id].some((k) => process.env[k]),
-          model: cfg.model,
-          models: FREE_MODELS[id],
-          quota: key ? await quotaFor(id, cfg.model) : null,
-        };
-      }),
-    );
+    for (const field of PROVIDER_SECRET_FIELDS) delete publicSettings[field];
     if (!secrets) {
-      // cliente: nada sobre serviços, chaves ou sistema
+      // cliente: nada sobre serviços, chaves, modelos ou sistema
+      for (const field of PROVIDER_FIELDS) delete publicSettings[field];
       const { routing: _r, offerLiteraria: _o, providerId: _p, checkout: _c, ads: _a, ...prefs } = publicSettings;
       void _r;
       void _o;
@@ -136,14 +150,50 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
         maxUploadMb: Math.round(config.maxUploadBytes / 1024 / 1024),
       };
     }
+    // só os serviços que existem aqui (na versão pública, Cloudflare e Mistral não existem)
+    const services = FREE_PROVIDERS.flatMap((id) => {
+      const cfg = configs.find((p) => p.id === id);
+      return cfg ? [{ id, cfg }] : [];
+    });
+    const free = await Promise.all(
+      services.map(async ({ id, cfg }) => {
+        const key = keyOf(id, settings);
+        const account = cloudflareAccountId(settings);
+        return {
+          id,
+          label: cfg.label,
+          hasKey: Boolean(key),
+          keyHint: key ? `••••${key.slice(-4)}` : "",
+          fromEnv: ENV_KEYS[id].some((k) => process.env[k]),
+          ...(id === "cloudflare"
+            ? {
+                account: {
+                  hasValue: Boolean(account),
+                  hint: account ? `••••${account.slice(-4)}` : "",
+                  fromEnv: Boolean(process.env.CLOUDFLARE_ACCOUNT_ID),
+                },
+              }
+            : {}),
+          ready: cfg.available,
+          model: cfg.model,
+          models: FREE_MODELS[id],
+          quota: cfg.available ? await quotaFor(id, cfg.model) : null,
+          // o que o serviço faz com o texto e os limites dele (painel)
+          dataPolicy: cfg.dataPolicy ?? null,
+          limitsNote: cfg.limitsNote ?? null,
+          health: cfg.available ? await healthOf(id, cfg.model).catch(() => null) : null,
+        };
+      }),
+    );
     return {
       settings: publicSettings,
       free,
-      providers: configs.map(({ id, label, available, model, hint, paid }) => ({
+      providers: configs.map(({ id, label, available, model, hint, paid, free }) => ({
         id,
         label,
         available,
         paid,
+        free,
         model: available ? model : "",
         hint,
       })),
@@ -158,8 +208,9 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
     return json(await payload());
   }
 
+  const ROUTABLE = ["gemini", "github", "groq", "cloudflare", "mistral", "anthropic", "openai"] as const;
   const Body = z.object({
-    providerId: z.enum(["gemini", "github", "groq", "anthropic", "openai", "demo"]).optional(),
+    providerId: z.enum(["gemini", "github", "groq", "cloudflare", "mistral", "anthropic", "openai", "demo"]).optional(),
     targetLanguage: z.string().max(20).optional(),
     dialogueStyle: z.enum(["target", "source"]).optional(),
     deepContext: z.boolean().optional(),
@@ -168,17 +219,22 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
     geminiApiKey: z.string().max(300).optional(),
     githubToken: z.string().max(300).optional(),
     groqApiKey: z.string().max(300).optional(),
+    cloudflareApiToken: z.string().max(300).optional(),
+    mistralApiKey: z.string().max(300).optional(),
+    /** ID da conta da Cloudflare (letras e números; "" apaga) */
+    cloudflareAccountId: z
+      .string()
+      .trim()
+      .max(64)
+      .regex(/^[A-Za-z0-9]*$/)
+      .optional(),
     geminiModel: z.string().max(80).optional(),
+    cloudflareModel: z.string().max(120).optional(),
+    mistralModel: z.string().max(80).optional(),
     routing: z
       .object({
-        padrao: z
-          .array(z.enum(["gemini", "github", "groq", "anthropic", "openai"]))
-          .max(6)
-          .optional(),
-        literaria: z
-          .array(z.enum(["gemini", "github", "groq", "anthropic", "openai"]))
-          .max(6)
-          .optional(),
+        padrao: z.array(z.enum(ROUTABLE)).max(8).optional(),
+        literaria: z.array(z.enum(ROUTABLE)).max(8).optional(),
       })
       .optional(),
     offerLiteraria: z.boolean().optional(),
@@ -213,7 +269,27 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
     };
     // chaves, modelos e ordem dos serviços: só no painel (ou na versão pública, com a chave da própria pessoa)
     if (secrets) {
-      if (b.routing) next.routing = { ...current.routing, ...b.routing };
+      if (b.routing) {
+        // a Grátis só com gratuitos e a Literária só com pagos: uma lista misturada é recusada
+        const routing = { ...current.routing };
+        for (const level of ["padrao", "literaria"] as const) {
+          const list = b.routing[level];
+          if (!list) continue;
+          if (foreignIds(level, list, current).length) {
+            return fail(
+              level === "padrao" ? "A tradução Grátis só pode usar serviços gratuitos." : "A tradução Literária só pode usar serviços pagos.",
+            );
+          }
+          // serviço encerrado (GitHub Models) sai da lista sem erro; repetidos contam uma vez
+          const retired = new Set(
+            providerConfigs(current)
+              .filter((c) => c.retired)
+              .map((c) => c.id as string),
+          );
+          routing[level] = [...new Set(list)].filter((id) => !retired.has(id));
+        }
+        next.routing = routing;
+      }
       if (b.offerLiteraria !== undefined) next.offerLiteraria = b.offerLiteraria;
       if (b.checkout) next.checkout = { ...current.checkout, ...b.checkout };
       if (b.business) next.business = { name: b.business.name?.trim() || undefined, email: b.business.email?.trim() || undefined };
@@ -227,30 +303,53 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
         next.ads = ads;
       }
     }
-    for (const id of secrets ? FREE_PROVIDERS : []) {
+    const present = new Set(providerConfigs(current).map((c) => c.id as string));
+    const changed: FreeProviderId[] = [];
+    /** chave ou conta novas (não só o modelo): a cota anotada era da conta antiga */
+    const newAccount: FreeProviderId[] = [];
+    for (const id of secrets ? FREE_PROVIDERS.filter((x) => present.has(x)) : []) {
+      const before = { key: keyOf(id, current), model: next[FREE_MODEL_FIELDS[id]], account: cloudflareAccountId(current) };
       const keyField = FREE_KEY_FIELDS[id];
       const value = b[keyField];
       if (value !== undefined) next[keyField] = value.trim() || undefined;
       const modelField = FREE_MODEL_FIELDS[id];
       const model = b[modelField];
       if (model && FREE_MODELS[id].some((m) => m.id === model)) next[modelField] = model;
+      if (id === "cloudflare" && b.cloudflareAccountId !== undefined) next.cloudflareAccountId = b.cloudflareAccountId || undefined;
+      const after = { key: keyOf(id, next), model: next[modelField], account: cloudflareAccountId(next) };
+      if (before.key !== after.key || before.model !== after.model || (id === "cloudflare" && before.account !== after.account)) changed.push(id);
+      if (after.key && (before.key !== after.key || (id === "cloudflare" && before.account !== after.account))) newAccount.push(id);
+      // chave nova de um serviço gratuito que não estava na ordem salva da Grátis: entra no fim da fila
+      const padrao = next.routing?.padrao;
+      if (!configured(id, current) && configured(id, next) && padrao?.length && !padrao.includes(id) && !b.routing?.padrao) {
+        if (providerConfigs(next).find((c) => c.id === id)?.free) next.routing = { ...next.routing, padrao: [...padrao, id] };
+      }
     }
     await writeSettings(next);
+    // chave, conta ou modelo novos: as falhas anotadas para o serviço ficam para trás (disjuntor fechado);
+    // chave ou conta novas: a cota esgotada também (era da conta antiga)
+    for (const id of changed) await clearProvider(id).catch(() => {});
+    for (const id of newAccount) await clearExhausted(id).catch(() => {});
+    // e os livros da Grátis à espera de um serviço tentam de novo agora, sem esperar a hora marcada
+    if (changed.length) await jobRunner.wakeWaiting().catch((e) => console.warn("[ajustes] não foi possível retomar os livros à espera", e));
     return json(await payload());
   }
 
   /**
    * Testa a chave de um serviço gratuito.
-   *  - Gemini e Groq: lista os modelos (não gasta cota);
-   *  - GitHub Models: um pedido mínimo (gasta 1 pedido da cota do dia).
+   *  - Gemini, Groq e Mistral: lista os modelos (não gasta cota);
+   *  - Cloudflare: um pedido mínimo (1 token de resposta: uma fração de Neuron);
+   *  - GitHub Models: encerrado, nada é chamado.
    */
   async function POST(request: Request) {
     if (!secrets) return fail("Acesso restrito.", 403);
     const body = (await request.json().catch(() => ({}))) as { service?: string };
     const service = (FREE_PROVIDERS as readonly string[]).includes(body.service ?? "") ? (body.service as FreeProviderId) : "gemini";
     const settings = await readSettings();
+    const cfg = providerConfigs(settings).find((p) => p.id === service);
+    if (!cfg) return fail("Este serviço não está disponível aqui.");
+    if (cfg.retired) return json({ ok: false, message: GITHUB_RETIRED_MESSAGE });
     const key = keyOf(service, settings);
-    const cfg = providerConfigs(settings).find((p) => p.id === service)!;
     if (!key) return fail("Nenhuma chave salva para este serviço.");
     try {
       if (service === "gemini") {
@@ -277,17 +376,48 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
           message: ids.has(cfg.model) ? undefined : `A chave funciona, mas o modelo ${cfg.model} não está disponível. Escolha outro.`,
         });
       }
-      const res = await fetch(`${freeServiceBase("github")}/chat/completions`, {
-        method: "POST",
-        headers: { "content-type": "application/json", authorization: `Bearer ${key}`, accept: "application/vnd.github+json" },
-        body: JSON.stringify({ model: cfg.model, max_tokens: 1, messages: [{ role: "user", content: "ok" }] }),
-      });
-      if (res.ok) return json({ ok: true });
-      const text = await res.text().catch(() => "");
-      if (res.status === 401 || res.status === 403)
-        return json({ ok: false, message: "O GitHub recusou o token. Ele precisa da permissão “Models: Read-only”." });
-      if (res.status === 429) return json({ ok: true, message: "Token funcionando, mas a cota de hoje deste modelo já acabou." });
-      return json({ ok: false, message: `O GitHub respondeu ${res.status}: ${text.slice(0, 200)}` });
+      if (service === "mistral") {
+        const res = await fetch(`${MISTRAL_BASE_URL}/models`, { headers: { authorization: `Bearer ${key}` } });
+        if (!res.ok)
+          return json({ ok: false, message: res.status === 401 ? "A chave foi recusada pela Mistral." : `A Mistral respondeu ${res.status}.` });
+        const data = (await res.json()) as { data?: { id: string; aliases?: string[] }[] };
+        const ids = new Set((data.data ?? []).flatMap((m) => [m.id, ...(m.aliases ?? [])]));
+        return json({
+          ok: ids.has(cfg.model),
+          message: ids.has(cfg.model) ? undefined : `A chave funciona, mas o modelo ${cfg.model} não aparece para ela. Escolha outro.`,
+        });
+      }
+      if (service === "cloudflare") {
+        const account = cloudflareAccountId(settings);
+        if (!account) return fail("Falta o ID da conta da Cloudflare.");
+        const res = await fetch(`${cloudflareBaseUrl(account)}/chat/completions`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
+          body: JSON.stringify({ model: cfg.model, max_tokens: 1, messages: [{ role: "user", content: "ok" }] }),
+        });
+        if (res.ok) return json({ ok: true });
+        const text = await res.text().catch(() => "");
+        let code: number | undefined;
+        let message = text.slice(0, 200);
+        try {
+          const parsed = JSON.parse(text) as { errors?: { code?: number; message?: string }[] };
+          code = parsed.errors?.[0]?.code;
+          message = parsed.errors?.[0]?.message ?? message;
+        } catch {
+          /* corpo não-JSON */
+        }
+        const known = cloudflareError({ status: res.status, message, code }, cfg.model);
+        if (known?.kind === "quota")
+          return json({ ok: true, message: "Token funcionando, mas a cota grátis de hoje já acabou (volta às 21h de Brasília)." });
+        if (known?.kind === "model") return json({ ok: false, message: known.message });
+        if (known?.kind === "rate")
+          return json({ ok: true, message: "Token funcionando (a Cloudflare está ocupada agora; a tradução espera a vez)." });
+        if (res.status === 401 || res.status === 403)
+          return json({ ok: false, message: "A Cloudflare recusou o token. Ele precisa da permissão de usar o Workers AI nesta conta." });
+        if (res.status === 404) return json({ ok: false, message: "A Cloudflare não achou a conta ou o modelo. Confira o ID da conta." });
+        return json({ ok: false, message: `A Cloudflare respondeu ${res.status}: ${message}` });
+      }
+      return json({ ok: false, message: "Este serviço não pode ser testado." });
     } catch {
       return json({ ok: false, message: "Não foi possível falar com o serviço agora." });
     }

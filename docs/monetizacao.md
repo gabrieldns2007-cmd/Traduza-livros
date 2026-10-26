@@ -4,6 +4,20 @@ Este documento explica como o Verso ganha dinheiro sem estragar a experiência e
 deixar ninguém gerar prejuízo. A arquitetura descrita aqui **já está no código**; os
 pagamentos ainda **não** estão ligados, e nada é cobrado hoje.
 
+**Em resumo — duas modalidades que nunca se misturam:**
+
+| | **Grátis** (id `padrao`) | **Literária** (id `literaria`) |
+| --- | --- | --- |
+| Preço | R$ 0, em qualquer tamanho, sem cartão | R$ 1,90 + R$ 1,49 por mil palavras (mínimo R$ 9,90) |
+| Quem traduz | só serviços de IA **gratuitos**, em rodízio automático | só os serviços **pagos** da lista dela (Anthropic) |
+| Prazo | nenhum garantido: pausa e continua sozinha quando os serviços gratuitos voltam | começa na hora |
+| Texto do cliente | alguns serviços gratuitos (ex.: o nível gratuito do Gemini) podem usar o texto para melhorar os produtos deles, com revisão humana | serviço pago que não usa o texto para treinar IA |
+| Como o Verso ganha | **anúncios** discretos (painel → Anúncios) | o preço do pedido (com margem garantida por teste) |
+
+A Grátis nunca cai num serviço pago, e a Literária nunca usa um gratuito. Trocar da
+Grátis para a Literária no meio do livro só acontece por escolha do cliente, com um
+pedido novo que cobre só as palavras que faltam.
+
 > Os números de custo vêm da tabela de preços dos modelos (`lib/billing/prices.ts`)
 > e de um modelo de consumo por palavra (`lib/billing/cost-model.ts`). São
 > estimativas iniciais: a partir de agora, cada tradução grava o custo real
@@ -27,17 +41,27 @@ administrativo (`/admin`). A API também não envia esses dados ao navegador.
    idioma. Receba seu livro traduzido.” e um único botão, **Traduzir meu livro**,
    que já abre o seletor de arquivo. Depois: como funciona, formatos, idiomas,
    estrutura preservada, EPUB/PDF, preço (com exemplos) e perguntas frequentes.
-2. **Confirmar**: “Seu livro está pronto para tradução.” — título, idiomas (com
-   “Alterar”), palavras e capítulos, o tipo de tradução com o preço, **Tradução
-   completa: R$ X**, a lista **Incluído** (tradução, capítulos organizados,
-   formatação preservada, EPUB, PDF, revisão, download) e o botão **Pagar e
-   traduzir**. Amostra grátis e preferências são opcionais, abaixo do botão.
-3. **Pagamento**: a página do meio de pagamento. Na volta, “Confirmando seu
-   pagamento…” até o aviso do meio de pagamento chegar, e então **“Pagamento
-   confirmado.” / “Estamos preparando sua tradução.”**
+2. **Confirmar**: “Tudo pronto para a sua nova edição.” — título, idiomas (com
+   “Alterar”), palavras e capítulos, o tipo de tradução — **Tradução Grátis · R$ 0**
+   primeiro, a **Literária** com o preço (ou “Em breve”, se não estiver à venda) —, a
+   lista **Incluído** (tradução, capítulos organizados, formatação preservada, EPUB,
+   PDF, revisão, download) e o botão. Na Grátis, o botão é **Começar tradução
+   grátis**, e logo acima ficam o prazo (“Sem prazo garantido: a tradução avança
+   conforme os serviços gratuitos ficam disponíveis e continua sozinha.”) e o aviso de
+   privacidade (“o texto passa por serviços de IA gratuitos de terceiros, que podem
+   usá-lo para melhorar seus serviços”). Amostra grátis e preferências são opcionais.
+3. **Pagamento** (só na Literária): a página do meio de pagamento. Na volta,
+   “Confirmando seu pagamento…” até o aviso do meio de pagamento chegar, e então
+   **“Pagamento confirmado.” / “Estamos preparando sua tradução.”** A Grátis nunca
+   abre página de pagamento, nem com os pagamentos ligados.
 4. **Acompanhamento**: Livro → Processando → Traduzindo → Revisando → Pronto, com
    “Seu livro está sendo traduzido.”, o percentual, “Capítulo X de Y” e a barra. A
-   pessoa pode fechar a página e voltar depois.
+   pessoa pode fechar a página e voltar depois. Na Grátis à espera dos serviços
+   gratuitos: “A tradução grátis está aguardando os serviços gratuitos ficarem
+   disponíveis. Ela continua sozinha hoje às 14:05. Todo o progresso está salvo.” (sem
+   hora conhecida: “assim que houver disponibilidade”). Se a Literária estiver à venda,
+   aparece, sem pressa e com o mesmo peso de “Tentar agora”, **Prefere não esperar?
+   Traduzir o restante na Literária**, com o valor das palavras que faltam.
 5. **Pronto**: “Seu livro está pronto.” com **Baixar EPUB** e **Baixar PDF**, e a
    revisão online.
 
@@ -48,37 +72,50 @@ traduzidos de novo, uma vez. Trechos editados à mão nunca são tocados.
 **Venda sem pressão (sem dark patterns):** o preço aparece antes de qualquer
 pagamento, o botão diz exatamente o que faz, não há contagem regressiva, urgência,
 assinatura escondida nem taxa extra. Abaixo do botão: “Pagamento único, sem
-assinatura e sem cobrança automática.” No beta, o botão é **Traduzir grátis** —
-nunca “Pagar” quando nada é cobrado.
+assinatura.” Na Grátis e no beta, o botão nunca diz “Pagar” — nada é cobrado. A
+oferta da Literária no meio de uma tradução grátis é opcional, discreta e só vira
+pedido depois de a pessoa conferir o valor e confirmar.
+
+**Troca da Grátis para a Literária** (`placeOrder` em `services/commerce/orders.ts`):
+permitida quando o livro tem a Grátis confirmada e está pausado, esperando ou com
+erro. O pedido novo (`replaces` = o pedido grátis) cobre só as palavras que faltam e
+passa pelo pagamento normal. Enquanto ele espera o pagamento, a Grátis fica parada
+(nada avança, e o preço continua certo) e a página do livro mostra o pedido de novo,
+com as duas saídas: pagar a Literária ou **Continuar na tradução grátis** (do mesmo
+ponto). O tipo de tradução do livro só muda quando o pedido é confirmado. Um pedido
+pago nunca vira grátis.
 
 **Preço** (`lib/billing/pricing.ts`):
 
-    preço = valor fixo do tipo  +  palavras ÷ 1000 × preço por mil
-            arredondado para cima em ,90 e nunca abaixo de R$ 9,90
+    Grátis:    R$ 0, em qualquer tamanho (sem preço mínimo)
+    Literária: valor fixo + palavras ÷ 1000 × preço por mil,
+               arredondado para cima em ,90 e nunca abaixo de R$ 9,90
 
 | Tipo | Fixo | Por mil palavras | 44.152 palavras | 210 mil palavras |
 | --- | --- | --- | --- | --- |
-| Padrão — fluente e fiel | R$ 8,90 | R$ 0,10 | R$ 13,90 | R$ 29,90 |
+| Grátis — tradução completa por IA gratuita, sem prazo garantido | R$ 0 | R$ 0 | R$ 0 | R$ 0 |
 | Literária — voz do autor, ritmo, imagens | R$ 1,90 | R$ 1,49 | R$ 67,90 | R$ 314,90 |
 
-O valor fixo cobre custos operacionais (tarifa fixa do pagamento, armazenamento,
-suporte). `assertPricingProtectsMargin` (rodado nos testes) garante que, para livros
-de 300 a 1 milhão de palavras, o preço líquido (sem taxa de pagamento e impostos)
-cobre o **pior** custo de processamento + o custo fixo, com a margem mínima do tipo:
+`assertPricingProtectsMargin` (rodado nos testes) garante, para livros de 300 a 1
+milhão de palavras:
 
-- **Padrão** (mínimo 15%): hoje roda só em serviços gratuitos — custo real de IA
-  zero. A conta supõe o pior caso do modelo pago mais barato (Gemini Flash-Lite):
-  mesmo assim nenhum livro dá prejuízo. Se a chave do Gemini ganhar faturamento,
-  troque o modelo para o Flash-Lite (o 3.8 Flash pago daria prejuízo acima de
-  ~200 mil palavras).
-- **Literária** (mínimo 50%): Anthropic, pago. A conta usa o Claude Sonnet; se
-  `ANTHROPIC_MODEL` ficar no padrão (Opus), o custo real é o dobro e a margem do
-  pior caso cai para ~30%.
+- **Grátis**: preço sempre R$ 0 — o teste falha se ela passar a cobrar qualquer
+  valor. Não há margem a proteger (não há receita): ela só usa serviços gratuitos, e
+  o custo real de IA é zero. **Não ative faturamento** nas chaves desses serviços
+  (Gemini, Groq…): a Grátis passaria a gerar custo sem nenhuma receita.
+- **Literária** (margem mínima de 50% no pior caso): Anthropic, pago. O preço
+  líquido (sem taxa de pagamento e impostos) cobre o **pior** custo de processamento
+  + o custo fixo por pedido (tarifa fixa do pagamento, armazenamento, suporte). A
+  conta usa o Claude Sonnet; se `ANTHROPIC_MODEL` ficar no padrão (Opus), o custo
+  real é o dobro e a margem do pior caso cai para ~30%.
 
 **Pedido e pagamento** (`services/commerce/orders.ts`, `services/billing/payments.ts`):
-ao tocar em “Pagar e traduzir”, o preço fica travado no pedido (`BookMeta.order`) e:
+ao tocar no botão, o preço fica travado no pedido (`BookMeta.order`) e:
 
-- **Beta** (padrão): o pedido é confirmado como “beta” e a tradução
+- **Grátis** (R$ 0): o pedido é confirmado na hora como `payment: "free"` e a
+  tradução começa — **sem nenhuma página de pagamento, mesmo com os pagamentos
+  ligados**;
+- **Literária no beta** (padrão): o pedido é confirmado como “beta” e a tradução
   começa — nada é cobrado;
 O modo de pagamento é escolhido no painel (Vendas); `CHECKOUT_MODE` e
 `PAYMENT_PROVIDER` no `.env.local`, se definidos, têm prioridade.
@@ -97,12 +134,12 @@ O modo de pagamento é escolhido no painel (Vendas); `CHECKOUT_MODE` e
 
 **Quem traduz** (`services/commerce/routing.ts`, editável no painel):
 
-- Padrão: Gemini → Groq (os dois gratuitos; o GitHub Models foi encerrado em 30/07/2026). Se a cota de um acaba, a
-  tradução passa sozinha para o próximo; se todos acabam, espera a cota voltar e
-  continua sozinha (“Sua tradução está na fila”).
-- A Padrão **nunca** usa um serviço pago, mesmo que ele seja colocado na lista.
-- Literária: Anthropic. Só é vendida quando o administrador liga “Vender a tradução
-  Literária” no painel — antes disso aparece como “Em breve”.
+- Grátis: só serviços gratuitos, em rodízio, na ordem do painel (o GitHub Models foi
+  encerrado em 30/07/2026). Se um fica sem cota ou com falhas, a tradução passa
+  sozinha para o próximo; se todos estão fora, espera e continua sozinha.
+- A Grátis **nunca** usa um serviço pago, mesmo que ele seja colocado na lista.
+- Literária: Anthropic, e só serviços pagos. Só é vendida quando o administrador liga
+  “Vender a tradução Literária” no painel — antes disso aparece como “Em breve”.
 
 **Privacidade entre clientes** (`services/commerce/ownership.ts`): sem contas, cada
 navegador recebe um identificador aleatório (cookie httpOnly) e só abre os livros que
@@ -110,19 +147,23 @@ enviou — o proxy devolve 404 para o livro de outra pessoa. O painel vê todos;
 antigos, sem dono, só o painel vê.
 
 **Textos legais:** `/termos` e `/privacidade` usam o nome e o e-mail informados no
-painel. Dizem a verdade sobre o serviço: tradução automática, pagamento único,
-desistência em 7 dias (CDC, art. 49) e que, nos planos gratuitos, alguns provedores
-de IA podem usar o texto para melhorar os próprios serviços. Ao trocar para planos
-pagos desses provedores (que não usam os dados), atualize a seção 4 da privacidade.
-Revise com um advogado antes de cobrar.
+painel. Dizem a verdade sobre o serviço: tradução automática, as duas modalidades,
+pagamento único na Literária, desistência em 7 dias (CDC, art. 49) e, numa seção
+própria (“A tradução grátis” nos termos; “Tradução grátis e Literária: para onde vai o
+texto” na privacidade), que a Grátis passa por serviços de IA gratuitos de terceiros —
+alguns deles (ex.: o nível gratuito da API Gemini, do Google) podem usar o texto para
+melhorar os próprios produtos, com revisão humana —, que ela não tem prazo garantido
+e que a Literária usa um serviço pago que não usa o texto para treinar IA. A data de
+“Última atualização” fica em `components/legal/legal-page.tsx`. Revise com um
+advogado antes de cobrar.
 
 **Painel administrativo** (`/admin`; a senha é criada no primeiro acesso ou vem de `ADMIN_PASSWORD`): pedidos, valor dos
 pedidos (beta) ou receita, custo real (só serviços pagos) e quanto custaria pela
 tabela, margem por livro, erros técnicos, histórico de execuções, ordem dos serviços
 por tipo, tabela de preços com margem e as chaves dos serviços.
 
-**Anúncios (opcional, desligado de início)** — painel → Anúncios. Uma renda extra que
-não atrapalha a compra: no máximo um espaço por página, sempre identificado como
+**Anúncios (opcional, desligado de início)** — painel → Anúncios. É assim que a
+tradução Grátis se paga: uma renda que não atrapalha a leitura nem a compra: no máximo um espaço por página, sempre identificado como
 “Publicidade”, com a cara discreta do site (sem a cor de destaque, sem parecer botão
 do Verso), sem janelas, anúncios fixos na tela ou em tela cheia. Lugares: fim da
 página inicial, fim de `/precos` (desligado de início), abaixo da estante em “Meus
@@ -156,7 +197,7 @@ poderia trocar o anúncio).
 
 | Modelo | A favor | Contra | Para o Verso |
 | --- | --- | --- | --- |
-| Anúncios | Grátis para quem lê | Destrói a sensação premium; receita baixíssima por usuário | Só como extra opcional, discreto e longe da compra (painel → Anúncios) |
+| Anúncios | Grátis para quem lê | Destrói a sensação premium; receita baixíssima por usuário | Sustentam a tradução Grátis (custo de IA zero): discretos e longe da compra (painel → Anúncios) |
 | Só grátis com limite | Ótimo para atrair | Não paga a conta | Só como porta de entrada |
 | Pagamento por livro | Simples de entender | Preço muda muito com o tamanho do livro | Sim, como **créditos avulsos** |
 | Assinatura mensal | Receita previsível | Quem lê 1 livro a cada 3 meses não assina | Sim, para quem traduz sempre |
@@ -170,9 +211,10 @@ experimentar.
 
 Por que funciona: o custo do Verso é proporcional a palavras traduzidas × preço do
 modelo, e o crédito é exatamente essa unidade. O leitor ocasional paga por livro; o
-frequente assina e paga menos por crédito. Anúncios não pagam a conta: são só um
-extra opcional, desligado de início e nunca no caminho da compra (veja “Anúncios”
-na seção 0).
+frequente assina e paga menos por crédito. Anúncios não pagariam traduções com IA
+paga; na venda por livro, eles sustentam só a tradução Grátis, que usa serviços
+gratuitos (custo de IA zero), e ficam sempre fora do caminho da compra (veja
+“Anúncios” na seção 0).
 
 ## 2. Estrutura de planos
 

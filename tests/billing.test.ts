@@ -80,7 +80,20 @@ async function newBook(chapters: number, paragraphs: number) {
       ).join(""),
     })),
   });
-  return (await importBook(epub, { fileName: "pago.epub", targetLanguage: "pt-BR" })).id;
+  const id = (await importBook(epub, { fileName: "pago.epub", targetLanguage: "pt-BR" })).id;
+  // servidor próprio: um serviço pago só traduz um livro com pedido pago (o motor recusa sem ele)
+  await store.update(id, (m) => {
+    m.order = {
+      id: "ord_teste",
+      level: "literaria",
+      words: m.totals.words,
+      priceBrl: 50,
+      status: "paid",
+      payment: "provider",
+      createdAt: m.createdAt,
+    };
+  });
+  return id;
 }
 
 async function resetWallet() {

@@ -28,9 +28,15 @@ export function BookScreen({ initial, initialGlossary, ads }: { initial: BookVie
   const router = useRouter();
   const [book, setBook] = useState(initial);
   const [glossary, setGlossary] = useState(initialGlossary);
+  // troca da Grátis para a Literária aberta pelo acompanhamento (o pedido ainda não foi feito)
+  const [upgrading, setUpgrading] = useState(false);
   const active = isActive(book.status);
+  const stopped = book.status === "paused" || book.status === "error";
   // a prévia grátis roda com o livro ainda “pronto”: acompanha também
-  const polling = active || book.preview?.status === "running";
+  const preview = book.preview?.status === "running";
+  // Grátis à espera dos serviços gratuitos: confere de vez em quando, para a tela mudar sozinha quando ela voltar
+  const waiting = book.status === "paused" && book.stopCode === "waiting";
+  const polling = active || preview || waiting;
 
   const refresh = useCallback(async () => {
     try {
@@ -53,8 +59,8 @@ export function BookScreen({ initial, initialGlossary, ads }: { initial: BookVie
   // acompanha o progresso enquanto a tradução está em andamento
   useEffect(() => {
     if (!polling) return;
-    const t = setInterval(refresh, active ? 3000 : 2000);
-    const g = setInterval(refreshGlossary, 12000);
+    const t = setInterval(refresh, active ? 3000 : preview ? 2000 : 30_000);
+    const g = setInterval(refreshGlossary, waiting ? 60_000 : 12000);
     const onVisible = () => document.visibilityState === "visible" && refresh();
     document.addEventListener("visibilitychange", onVisible);
     return () => {
@@ -62,7 +68,13 @@ export function BookScreen({ initial, initialGlossary, ads }: { initial: BookVie
       clearInterval(g);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [polling, active, refresh, refreshGlossary]);
+  }, [polling, active, preview, waiting, refresh, refreshGlossary]);
+
+  // a troca aberta pelo acompanhamento só vale enquanto o livro está parado: quando ele volta a andar
+  // (ou termina), fecha — senão o pedido reabriria sozinho na próxima espera
+  useEffect(() => {
+    if (!stopped) setUpgrading(false);
+  }, [stopped]);
 
   // ao terminar, atualiza o glossário uma última vez
   useEffect(() => {
@@ -80,6 +92,11 @@ export function BookScreen({ initial, initialGlossary, ads }: { initial: BookVie
     router.push("/livros");
     router.refresh();
   };
+
+  // pedido esperando o pagamento num livro já começado (troca para a Literária, ou um pedido antigo):
+  // o pedido volta a aparecer, com as duas saídas — pagar ou seguir na Grátis
+  const pendingOrder = !PUBLIC_MODE && stopped && book.order?.status === "awaiting_payment";
+  const showOrder = !PUBLIC_MODE && (book.status === "ready" || pendingOrder || (upgrading && stopped));
 
   const source = book.sourceLanguage ?? book.detectedLanguage;
   const adPlacement = PUBLIC_MODE ? null : bookAdPlacement(book.status);
@@ -114,9 +131,23 @@ export function BookScreen({ initial, initialGlossary, ads }: { initial: BookVie
       ) : null}
 
       <div className="mt-8 sm:mt-10">
-        {book.status === "ready" && (PUBLIC_MODE ? <StartPanel book={book} onStarted={setBook} /> : <OrderPanel book={book} onChange={setBook} />)}
-        {(active || book.status === "paused" || book.status === "error") &&
-          (PUBLIC_MODE ? <ProgressPanel book={book} onAction={act} /> : <OrderProgress book={book} onResume={() => act("resume")} />)}
+        {PUBLIC_MODE ? (
+          <>
+            {book.status === "ready" && <StartPanel book={book} onStarted={setBook} />}
+            {(active || stopped) && <ProgressPanel book={book} onAction={act} />}
+          </>
+        ) : showOrder ? (
+          <OrderPanel
+            book={book}
+            onChange={(b) => {
+              setUpgrading(false);
+              setBook(b);
+            }}
+            onCancel={pendingOrder ? undefined : () => setUpgrading(false)}
+          />
+        ) : (
+          (active || stopped) && <OrderProgress book={book} onResume={() => act("resume")} onUpgrade={() => setUpgrading(true)} />
+        )}
         {book.status === "done" && <DonePanel book={book} onChange={setBook} onRetry={() => act("retry-failed")} />}
       </div>
 

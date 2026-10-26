@@ -1,5 +1,5 @@
 import { LANGUAGES } from "@/lib/languages";
-import { OPERATIONS, priceFor, SERVICE_LEVELS } from "@/lib/billing/pricing";
+import { OPERATIONS, priceFor, priceLabel, SERVICE_LEVELS } from "@/lib/billing/pricing";
 import { brl } from "@/lib/money";
 import { ArrowRight, Check } from "@/components/ui/icons";
 import { ButtonLink } from "@/components/ui/button";
@@ -8,11 +8,18 @@ import { AdSlot } from "@/components/ads/ad-slot";
 import type { AdConfig } from "@/lib/ads";
 import { UploadCta } from "./upload-cta";
 
-const STEPS: [string, string][] = [
-  ["Envie o livro", "Um arquivo EPUB ou PDF, do celular ou do computador."],
-  ["Escolha o idioma", "O valor aparece na hora, antes de continuar. Se quiser, leia antes uma amostra grátis."],
-  ["Receba sua nova edição", "Em EPUB e PDF, com os capítulos e a formatação do original."],
-];
+function steps(literaria: boolean): [string, string][] {
+  return [
+    ["Envie o livro", "Um arquivo EPUB ou PDF, do celular ou do computador."],
+    [
+      "Escolha o idioma",
+      literaria
+        ? "E o tipo de tradução: a Grátis, sem custo, ou a Literária, com o valor na hora, antes de continuar. Se quiser, leia antes uma amostra grátis."
+        : "E comece de graça, sem cartão. Se quiser, leia antes uma amostra grátis.",
+    ],
+    ["Receba sua nova edição", "Em EPUB e PDF, com os capítulos e a formatação do original."],
+  ];
+}
 
 const STRUCTURE = [
   "Capítulos e sumário",
@@ -41,8 +48,8 @@ function Section({ title, children, className = "" }: { title: string; children:
 /**
  * Página inicial do serviço: explica em segundos o que é, como funciona e
  * quanto custa, com um único botão de ação. Fala do livro que a pessoa vai
- * ler, não da compra — mas sem esconder nada: o valor aparece antes de
- * continuar.
+ * ler, não da compra — mas sem esconder nada: a Grátis é R$ 0 de verdade (e
+ * pode levar mais tempo), e o valor da Literária aparece antes de continuar.
  */
 export function Landing({
   targetLanguage,
@@ -69,17 +76,17 @@ export function Landing({
           <UploadCta targetLanguage={targetLanguage} maxUploadMb={maxUploadMb} />
         </div>
         <p className="mt-4 text-[0.875rem] leading-relaxed text-muted">
-          EPUB ou PDF · a partir de {brl(OPERATIONS.minimumBrl)}
+          EPUB ou PDF · tradução grátis, sem cartão
           <br className="sm:hidden" />
           <span className="hidden sm:inline"> · </span>
-          Você verá o valor antes de continuar.
+          {literaria ? `Literária a partir de ${brl(OPERATIONS.minimumBrl)}.` : "Você vê tudo antes de continuar."}
         </p>
       </section>
 
       {/* ---------- como funciona ---------- */}
       <Section title="Como funciona">
         <ol className="mt-7 space-y-6">
-          {STEPS.map(([title, text], i) => (
+          {steps(literaria).map(([title, text], i) => (
             <li key={title} className="flex gap-5">
               <span className="serif num w-6 shrink-0 text-[1.75rem] leading-none text-accent">{i + 1}</span>
               <div>
@@ -90,7 +97,8 @@ export function Landing({
           ))}
         </ol>
         <p className="mt-7 text-[0.9375rem] leading-relaxed text-ink-2">
-          Depois de confirmar, é só esperar: a tradução continua mesmo com a página fechada, e você acompanha capítulo por capítulo.
+          Depois de confirmar, é só esperar: a tradução continua mesmo com a página fechada, e você acompanha capítulo por capítulo. Na tradução
+          grátis, ela pode pausar e voltar sozinha quando os serviços gratuitos estiverem disponíveis — nada se perde.
         </p>
       </Section>
 
@@ -158,7 +166,9 @@ export function Landing({
       {/* ---------- preço ---------- */}
       <Section title="Preço">
         <p className="mt-4 text-[0.9375rem] leading-relaxed text-ink-2">
-          Um valor único por livro, calculado pelo tamanho. Você verá o valor exato antes de continuar.
+          A tradução Grátis é grátis de verdade: sem cartão e sem cobrança, em qualquer tamanho. Ela pode levar mais tempo, porque depende da
+          disponibilidade dos serviços gratuitos.
+          {literaria && " A Literária tem um valor único por livro, calculado pelo tamanho — você vê o valor exato antes de continuar."}
         </p>
         <div className="mt-6 overflow-hidden rounded-[1.25rem] border border-rule">
           <table className="num w-full text-[0.9375rem]">
@@ -181,7 +191,7 @@ export function Landing({
                   </td>
                   {levels.map((l) => (
                     <td key={l.id} className="serif px-4 py-3 text-right text-[1.125rem] text-ink sm:px-5">
-                      {brl(priceFor(words, l.id))}
+                      {priceLabel(priceFor(words, l.id))}
                     </td>
                   ))}
                 </tr>
@@ -194,7 +204,7 @@ export function Landing({
           {!literaria && " Tradução Literária: em breve."}
         </p>
         <ButtonLink href="/precos" variant="secondary" className="mt-6 w-full sm:w-auto">
-          Calcular o valor do meu livro <ArrowRight />
+          {literaria ? "Calcular o valor do meu livro" : "Ver os preços"} <ArrowRight />
         </ButtonLink>
       </Section>
 
@@ -207,7 +217,7 @@ export function Landing({
       {/* ---------- fim ---------- */}
       <section className="mt-20 rounded-[1.5rem] bg-paper-2 px-6 py-10 text-center sm:px-10">
         <h2 className="serif text-[1.9rem] leading-tight tracking-[-0.02em] text-ink">Pronto para ler no seu idioma?</h2>
-        <p className="mt-2 text-[0.9375rem] text-ink-2">Envie o livro, leia uma amostra e veja o valor. Você decide se quer seguir.</p>
+        <p className="mt-2 text-[0.9375rem] text-ink-2">Envie o livro, leia uma amostra e comece de graça. Você decide se quer seguir.</p>
         <div className="mt-7 flex justify-center">
           <UploadCta targetLanguage={targetLanguage} maxUploadMb={maxUploadMb} />
         </div>

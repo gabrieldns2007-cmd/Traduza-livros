@@ -58,12 +58,18 @@ export class ProviderError extends Error {
   readonly code: ProviderErrorCode;
   /** quando a cota volta (ms desde 1970), se o provedor informou */
   readonly retryAt?: number;
-  constructor(message: string, opts: { fatal: boolean; cause?: unknown; code?: ProviderErrorCode; retryAt?: number }) {
+  /** tokens já gastos antes do erro (ex.: análise que veio cortada): também entram na conta */
+  readonly usage?: { inputTokens: number; outputTokens: number };
+  constructor(
+    message: string,
+    opts: { fatal: boolean; cause?: unknown; code?: ProviderErrorCode; retryAt?: number; usage?: { inputTokens: number; outputTokens: number } },
+  ) {
     super(message, { cause: opts.cause });
     this.name = "ProviderError";
     this.fatal = opts.fatal;
     this.code = opts.code ?? "other";
     this.retryAt = opts.retryAt;
+    this.usage = opts.usage;
   }
 }
 

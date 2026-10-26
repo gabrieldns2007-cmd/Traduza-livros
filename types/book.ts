@@ -176,15 +176,47 @@ export interface BookOrder {
   words: number;
   priceBrl: number;
   status: "awaiting_payment" | "paid" | "canceled" | "refunded";
-  /** "beta": confirmado sem cobrança durante o beta; "provider": pago pelo meio de pagamento */
-  payment: "beta" | "provider" | null;
+  /**
+   * "beta": confirmado sem cobrança durante o beta; "provider": pago pelo meio de pagamento;
+   * "free": tradução Grátis (R$ 0), confirmada sem passar por pagamento nenhum
+   */
+  payment: "beta" | "provider" | "free" | null;
+  /**
+   * troca da Grátis para a Literária, por escolha do cliente: id do pedido grátis que
+   * este substitui (o preço cobre só as palavras que faltavam)
+   */
+  replaces?: string;
   /** meio de pagamento usado (ex.: "simulado", "mercadopago") */
   paymentProvider?: string;
   createdAt: string;
   paidAt?: string;
   refundedAt?: string;
+  /**
+   * troca da Grátis para a Literária esperando o pagamento: depois desta hora (ISO), o
+   * pedido é cancelado e a Grátis segue sozinha (ela fica parada até lá)
+   */
+  expiresAt?: string;
+  /** quando o pedido foi cancelado (refeito, trocado ou sem pagamento no prazo) */
+  canceledAt?: string;
   /** id do pagamento no meio de pagamento */
   externalId?: string;
+}
+
+/**
+ * Pagamento que chegou mas não vale como venda (pedido da tradução grátis, pedido
+ * trocado, cancelado ou já pago, valor menor que o preço): fica anotado para o
+ * dono devolver o dinheiro (painel → “Pagamento recebido para reembolsar”).
+ */
+export interface PaymentToRefund {
+  orderId: string;
+  /** id do pagamento no meio de pagamento */
+  externalId?: string;
+  amountBrl?: number;
+  /** meio de pagamento (ex.: "simulado", "mercadopago") */
+  provider?: string;
+  /** por que não vale como venda (para o painel) */
+  reason: string;
+  at: string;
 }
 
 /** Prévia grátis: um trecho traduzido antes de decidir traduzir o livro todo. */
@@ -237,6 +269,10 @@ export interface BookMeta {
   /** tipo de tradução (o serviço de IA é escolhido por dentro, conforme o tipo) */
   level?: "padrao" | "literaria";
   order?: BookOrder;
+  /** pedidos anteriores do livro (refeitos, trocados ou cancelados), do mais antigo ao mais novo */
+  orderHistory?: BookOrder[];
+  /** pagamentos recebidos que não valem como venda: o dono devolve o dinheiro */
+  paymentsToRefund?: PaymentToRefund[];
   /** pausada à espera de cota: quando continua sozinha (ISO) */
   resumeAt?: string;
   /**
@@ -277,8 +313,15 @@ export interface Segment {
   src: string;
   /** tradução na mesma marcação */
   out?: string;
+  /** quem produziu `out`: “serviço/modelo” (ex.: "gemini/gemini-3.8-flash"); só para o painel e os custos */
+  by?: string;
   edited?: boolean;
   failed?: boolean;
+  /**
+   * avisos da conferência de qualidade (lib/quality.ts): num trecho gravado, o que chamou
+   * atenção mas foi aceito ("ratio", "fmt-lost", "pt-PT"…); num trecho que falhou, o motivo
+   */
+  warn?: string[];
   words: number;
 }
 

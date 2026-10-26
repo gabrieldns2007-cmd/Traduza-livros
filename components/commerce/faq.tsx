@@ -9,21 +9,33 @@ import { FaqAccordion } from "./faq-accordion";
  */
 export const FAQ: [string, string][] = [
   [
-    "Como é feito o orçamento?",
-    "Seu orçamento é calculado com base no tamanho do livro (número de palavras) e no tipo de tradução. Você verá o valor exato antes de continuar — sem taxas escondidas.",
+    "A tradução grátis é grátis mesmo?",
+    "É. A tradução Grátis não custa nada, em qualquer tamanho de livro, e não pede cartão. Ela é feita por serviços de IA gratuitos, então pode levar mais tempo: não há prazo garantido.",
   ],
-  ["Preciso assinar alguma coisa?", "Não. Sem assinatura: cada livro tem um valor único, uma vez só."],
+  [
+    "Qual a diferença entre a Grátis e a Literária?",
+    "A Grátis traduz o livro inteiro sem custo, conforme os serviços gratuitos ficam disponíveis. A Literária é paga: tem mais cuidado com a voz do autor, o ritmo e as imagens, e usa um serviço de IA pago, que não usa o seu texto para treinar IA. Ela aparece com o valor quando estiver disponível.",
+  ],
+  [
+    "Como é feito o orçamento da Literária?",
+    "Pelo tamanho do livro (número de palavras). Você verá o valor exato antes de continuar — sem taxas escondidas.",
+  ],
+  ["Preciso assinar alguma coisa?", "Não. Sem assinatura: a Grátis não cobra nada, e a Literária tem um valor único por livro, uma vez só."],
   [
     "Posso ver uma amostra antes de decidir?",
-    "Sim, e é grátis. Depois de enviar o livro, peça uma amostra: um trecho do começo, com o original ao lado.",
+    "Sim, e é grátis. Depois de enviar o livro, peça uma amostra: um trecho do começo, com o original ao lado. A amostra é feita pela tradução grátis.",
   ],
   [
     "Quanto tempo demora?",
-    "De alguns minutos a algumas horas, conforme o tamanho do livro. Você pode fechar a página: a tradução continua e você acompanha quando voltar.",
+    "Na Literária, de alguns minutos a algumas horas, conforme o tamanho do livro. Na Grátis, não há prazo garantido: ela avança conforme os serviços gratuitos ficam disponíveis e pode levar bem mais tempo, principalmente em livros longos. Você pode fechar a página: a tradução continua e você acompanha quando voltar.",
   ],
   [
     "E se a tradução parar no meio?",
-    "Tudo o que já foi traduzido fica salvo, e ela continua do mesmo ponto. Nada é traduzido duas vezes, nem entra de novo no orçamento.",
+    "Tudo o que já foi traduzido fica salvo, e ela continua do mesmo ponto — na Grátis, sozinha, quando os serviços gratuitos voltam. Nada é traduzido duas vezes, nem entra de novo no orçamento.",
+  ],
+  [
+    "Posso trocar a Grátis pela Literária no meio?",
+    "Pode, se a Literária estiver disponível: enquanto a Grátis espera, você pode traduzir o restante na Literária, pagando só pelas palavras que faltam. A troca só acontece se você escolher e confirmar.",
   ],
   ["Posso corrigir alguma coisa?", "Pode. Na revisão, cada parágrafo traduzido aparece ao lado do original e pode ser editado antes de baixar."],
   [
@@ -40,7 +52,7 @@ export const FAQ: [string, string][] = [
   ],
   [
     "O que acontece com o meu arquivo?",
-    "Ele é usado para fazer a sua tradução e fica guardado para você revisar e baixar. Não é publicado nem vendido, e pode ser excluído quando você quiser. Detalhes na Política de privacidade.",
+    "Ele é usado para fazer a sua tradução e fica guardado para você revisar e baixar. Não é publicado nem vendido, e pode ser excluído quando você quiser. Na tradução grátis (e na amostra grátis), o texto passa por serviços de IA gratuitos de terceiros, que podem guardar o texto, usá-lo para treinar IA e permitir que pessoas o leiam. Não use para textos confidenciais. Detalhes na Política de privacidade.",
   ],
 ];
 

@@ -126,19 +126,22 @@ export function repairMarkup(markup: string, tags: Record<string, InlineTag>, sr
   return { markup: out.join("").trim(), missing, issues };
 }
 
+/** Quebra de linha comum ou um <br>/<br/> escrito sem número (que já chega escapado: &lt;br/&gt;). */
+const LINE_BREAK_RE = /[ \t]*(?:\r?\n|&lt;br\s*\/?&gt;)[ \t]*/gi;
+
 /**
  * Poesia: o modelo às vezes troca as quebras de verso (<br_N/>) por quebras de
- * linha comuns. Se a tradução tem exatamente tantas quebras de linha quanto
- * <br_N/> faltando, cada uma volta ao lugar de uma quebra, na ordem do original.
- * Em qualquer outro caso nada muda. Devolve a marcação e as tags que ainda faltam.
+ * linha comuns ou por um <br/> sem número. Se a tradução tem exatamente tantas
+ * quebras quanto <br_N/> faltando, cada uma volta ao lugar de uma quebra, na ordem
+ * do original. Em qualquer outro caso nada muda. Devolve a marcação e as tags que ainda faltam.
  */
 export function restoreLineBreaks(markup: string, missing: number[], tags: Record<string, InlineTag>): { markup: string; missing: number[] } {
   const breaks = missing.filter((k) => tags[String(k)]?.v && tags[String(k)].n === "br");
   if (!breaks.length) return { markup, missing };
-  const newlines = markup.match(/\r?\n/g)?.length ?? 0;
+  const newlines = markup.match(LINE_BREAK_RE)?.length ?? 0;
   if (newlines !== breaks.length) return { markup, missing };
   let n = 0;
-  const fixed = markup.replace(/[ \t]*\r?\n[ \t]*/g, () => `<${safeName(tags[String(breaks[n])].n)}_${breaks[n++]}/>`);
+  const fixed = markup.replace(LINE_BREAK_RE, () => `<${safeName(tags[String(breaks[n])].n)}_${breaks[n++]}/>`);
   return { markup: fixed, missing: missing.filter((k) => !breaks.includes(k)) };
 }
 

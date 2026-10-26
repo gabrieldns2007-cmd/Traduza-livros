@@ -19,7 +19,7 @@ interface Payload {
     instructions: string;
   };
   free: FreeService[];
-  providers: { id: string; label: string; available: boolean; paid: boolean; model: string; hint?: string }[];
+  providers: { id: string; label: string; available: boolean; paid: boolean; free?: boolean; model: string; hint?: string }[];
   defaultProvider: string;
   dataDir: string;
   authEnabled: boolean;
@@ -78,7 +78,11 @@ export function SettingsForm({ variant = "customer" }: { variant?: "customer" | 
       {showServices && (
         <Section
           title={admin ? "Chaves dos serviços gratuitos (cota de hoje)" : "Sua chave gratuita (cota de hoje)"}
-          note={`Serviços de IA gratuitos, sem cartão. Cada um tem a própria cota diária: quando a de um acaba, você pode continuar com outro. ${PUBLIC_MODE ? "As chaves ficam só neste navegador." : "As chaves ficam só no servidor."}`}
+          note={
+            admin
+              ? "Serviços de IA gratuitos, sem cartão. Cada um tem a própria cota: quando a de um acaba (ou ele falha), a tradução Grátis passa sozinha para o próximo, na ordem de “Quem traduz cada tipo”. Quanto mais serviços com chave, menos espera. As chaves ficam só no servidor."
+              : `Serviços de IA gratuitos, sem cartão. Cada um tem a própria cota diária: quando a de um acaba, você pode continuar com outro. ${PUBLIC_MODE ? "As chaves ficam só neste navegador." : "As chaves ficam só no servidor."}`
+          }
         >
           <div className="space-y-3">
             {data.free.map((s) => (
@@ -91,7 +95,7 @@ export function SettingsForm({ variant = "customer" }: { variant?: "customer" | 
       {admin && data.providers.some((p) => p.paid && p.available) && (
         <Section
           title="Serviços pagos"
-          note="Um serviço pago só traduz a tradução Literária, e só quando você liga a venda dela acima. A Padrão nunca usa um serviço pago."
+          note="Um serviço pago só traduz a tradução Literária, e só quando você liga a venda dela acima. A Grátis nunca usa um serviço pago."
         >
           <ul className="divide-y divide-rule border-y border-rule">
             {data.providers

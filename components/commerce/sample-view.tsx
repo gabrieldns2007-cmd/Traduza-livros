@@ -78,7 +78,9 @@ export function SampleView({ book }: { book: BookView }) {
           Ver o trecho todo ({data.pairs.length} parágrafos)
         </button>
       )}
-      <p className="mt-3 text-[0.8125rem] leading-relaxed text-muted">Assim fica o seu livro. O trecho da amostra já entra na tradução completa.</p>
+      <p className="mt-3 text-[0.8125rem] leading-relaxed text-muted">
+        Assim fica o seu livro na tradução grátis. O trecho da amostra já entra na tradução completa.
+      </p>
     </div>
   );
 }

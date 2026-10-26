@@ -3,13 +3,18 @@
  *
  * Regras de custo:
  *  - nunca liga billing nem troca de provedor;
- *  - limite por minuto: espera o tempo indicado pela API e tenta de novo (poucas vezes);
- *  - limite diário/gratuito esgotado: para com o código "quota", e a tradução fica pausada.
+ *  - limite por minuto: espera o tempo indicado pela API e tenta de novo (no máximo
+ *    2 vezes; servidor sobrecarregado, 1 vez) — depois o rodízio passa a outro
+ *    serviço gratuito. Espera pedida acima de 2 min: não tenta de novo agora;
+ *  - a vaga na fila do serviço (limitador) vale só durante cada tentativa;
+ *  - limite diário/gratuito esgotado: para com o código "quota", e a tradução fica pausada;
+ *  - região sem o nível gratuito (400 FAILED_PRECONDITION): falha da conta, como chave recusada.
  *
  * Usa a API REST com streaming (SSE) para não estourar timeouts em respostas longas.
  */
 import type { LLMClient, LLMRequest, LLMResponse } from "./types";
 import { CREDIT_RE, ProviderError } from "./types";
+import type { Gate } from "./free-openai";
 import { sleep } from "@/utils/async";
 
 const BASE = "https://generativelanguage.googleapis.com/v1beta";
@@ -72,13 +77,22 @@ export function nextPacificMidnight(now = Date.now()): number {
 
 export const FREE_LIMIT_MESSAGE = "Limite gratuito atingido. A tradução pode ser continuada quando a cota estiver disponível.";
 
+/** Espera mais longa que o cliente faz antes de tentar de novo (acima disso, outro serviço continua). */
+const MAX_CLIENT_WAIT_MS = 120_000;
+
+/** Resultado de uma tentativa: a resposta, ou quanto esperar antes da próxima. */
+type Step = { response: LLMResponse } | { wait: number };
+
 export class GeminiClient implements LLMClient {
   readonly providerId = "gemini";
 
   constructor(
     readonly model: string,
     private readonly apiKey: string,
-    private readonly maxRateRetries = 4,
+    private readonly maxRateRetries = 2,
+    /** vaga na fila do serviço, pega antes de cada tentativa (limitador) */
+    private readonly gate?: Gate,
+    private readonly maxServerRetries = 1,
   ) {}
 
   async complete(req: LLMRequest): Promise<LLMResponse> {
@@ -93,71 +107,95 @@ export class GeminiClient implements LLMClient {
       },
     };
 
-    for (let attempt = 0; ; attempt++) {
-      let res: Response;
+    const estimate = Math.ceil((req.system.length + req.user.length) / 3.5) * 2;
+    const tries = { rate: 0, server: 0 };
+    for (;;) {
+      // a vaga na fila do serviço vale só durante a tentativa (nunca durante a espera)
+      const release = this.gate ? await this.gate(req.signal, estimate) : undefined;
+      let used = 0;
+      let step: Step;
       try {
-        res = await fetch(`${BASE}/models/${encodeURIComponent(this.model)}:streamGenerateContent?alt=sse`, {
-          method: "POST",
-          headers: { "content-type": "application/json", "x-goog-api-key": this.apiKey },
-          body: JSON.stringify(body),
-          signal: req.signal,
-        });
-      } catch (err) {
-        if (req.signal?.aborted) throw err;
-        throw new ProviderError("Falha de conexão com o Google (Gemini).", { fatal: false, cause: err, code: "network" });
+        step = await this.attempt(req, body, tries);
+        if ("response" in step) used = step.response.usage.inputTokens + step.response.usage.outputTokens || estimate;
+      } finally {
+        release?.(used);
       }
+      if ("response" in step) return step.response;
+      req.onWait?.(step.wait);
+      await sleep(step.wait, req.signal);
+    }
+  }
 
-      if (res.ok && res.body) return this.readStream(res.body);
+  private async attempt(req: LLMRequest, body: Record<string, unknown>, tries: { rate: number; server: number }): Promise<Step> {
+    let res: Response;
+    try {
+      res = await fetch(`${BASE}/models/${encodeURIComponent(this.model)}:streamGenerateContent?alt=sse`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-goog-api-key": this.apiKey },
+        body: JSON.stringify(body),
+        signal: req.signal,
+      });
+    } catch (err) {
+      if (req.signal?.aborted) throw err;
+      throw new ProviderError("Falha de conexão com o Google (Gemini).", { fatal: false, cause: err, code: "network" });
+    }
 
-      const text = await res.text().catch(() => "");
-      let parsed: GeminiErrorBody = {};
-      try {
-        parsed = JSON.parse(text) as GeminiErrorBody;
-      } catch {
-        /* corpo não-JSON */
-      }
-      const message = parsed.error?.message ?? text.slice(0, 300);
+    if (res.ok && res.body) return { response: await this.readStream(res.body) };
 
-      if (res.status === 429) {
-        const q = parseQuota(parsed);
-        // limite por minuto: espera o que a API pede e tenta de novo
-        if (!q.daily && attempt < this.maxRateRetries) {
-          const wait = Math.min(q.retryMs ?? 20_000 * (attempt + 1), 120_000) + 500;
-          console.info(`[gemini] limite por minuto atingido; aguardando ${Math.round(wait / 1000)}s (tentativa ${attempt + 1})`);
-          req.onWait?.(wait);
-          await sleep(wait, req.signal);
-          continue;
-        }
-        throw new ProviderError(FREE_LIMIT_MESSAGE, {
-          fatal: true,
-          code: "quota",
-          retryAt: q.daily ? nextPacificMidnight() : Date.now() + (q.retryMs ?? 60_000),
-        });
+    const text = await res.text().catch(() => "");
+    let parsed: GeminiErrorBody = {};
+    try {
+      parsed = JSON.parse(text) as GeminiErrorBody;
+    } catch {
+      /* corpo não-JSON */
+    }
+    const message = parsed.error?.message ?? text.slice(0, 300);
+
+    if (res.status === 429) {
+      const q = parseQuota(parsed);
+      // limite por minuto: espera o que a API pede e tenta de novo (espera longa: outro serviço continua)
+      if (!q.daily && (q.retryMs ?? 0) <= MAX_CLIENT_WAIT_MS && tries.rate < this.maxRateRetries) {
+        tries.rate++;
+        const wait = Math.min(q.retryMs ?? 20_000 * tries.rate, MAX_CLIENT_WAIT_MS) + 500;
+        console.info(`[gemini] limite por minuto atingido; aguardando ${Math.round(wait / 1000)}s (tentativa ${tries.rate})`);
+        return { wait };
       }
-      if (res.status === 400 && /api key not valid|API_KEY_INVALID/i.test(message)) {
-        throw new ProviderError("A chave do Gemini foi recusada. Confira a chave em Ajustes.", { fatal: true, code: "auth" });
-      }
-      if (res.status === 401 || res.status === 403) {
-        throw new ProviderError("A chave do Gemini não tem permissão para este modelo. Confira a chave em Ajustes.", { fatal: true, code: "auth" });
-      }
-      if (res.status === 404) {
-        throw new ProviderError(`O modelo “${this.model}” não está disponível para a sua chave.`, { fatal: true, code: "model" });
-      }
-      if (res.status === 402 || CREDIT_RE.test(message)) {
-        throw new ProviderError(FREE_LIMIT_MESSAGE, { fatal: true, code: "quota", retryAt: nextPacificMidnight() });
-      }
-      if (res.status >= 500 && attempt < 3) {
-        const wait = 15_000 * (attempt + 1);
-        console.info(`[gemini] serviço sobrecarregado (${res.status}); aguardando ${wait / 1000}s`);
-        req.onWait?.(wait);
-        await sleep(wait, req.signal);
-        continue;
-      }
-      throw new ProviderError(`O Gemini respondeu com erro ${res.status}: ${message}`, {
-        fatal: res.status === 400,
-        code: res.status >= 500 ? "server" : "bad_request",
+      throw new ProviderError(FREE_LIMIT_MESSAGE, {
+        fatal: true,
+        code: "quota",
+        retryAt: q.daily ? nextPacificMidnight() : Date.now() + (q.retryMs ?? 60_000),
       });
     }
+    if (res.status === 400 && /api key not valid|API_KEY_INVALID/i.test(message)) {
+      throw new ProviderError("A chave do Gemini foi recusada. Confira a chave em Ajustes.", { fatal: true, code: "auth" });
+    }
+    if (
+      res.status === 400 &&
+      (parsed.error?.status === "FAILED_PRECONDITION" || /location is not supported|not available in your country/i.test(message))
+    ) {
+      // o Google não oferece o nível gratuito na região do servidor: é da conta, não do pedido
+      throw new ProviderError("O Google não oferece o nível gratuito do Gemini na região deste servidor.", { fatal: true, code: "auth" });
+    }
+    if (res.status === 401 || res.status === 403) {
+      throw new ProviderError("A chave do Gemini não tem permissão para este modelo. Confira a chave em Ajustes.", { fatal: true, code: "auth" });
+    }
+    if (res.status === 404) {
+      throw new ProviderError(`O modelo “${this.model}” não está disponível para a sua chave.`, { fatal: true, code: "model" });
+    }
+    if (res.status === 402 || CREDIT_RE.test(message)) {
+      throw new ProviderError(FREE_LIMIT_MESSAGE, { fatal: true, code: "quota", retryAt: nextPacificMidnight() });
+    }
+    if (res.status >= 500 && tries.server < this.maxServerRetries) {
+      tries.server++;
+      const wait = 15_000 * tries.server;
+      console.info(`[gemini] serviço sobrecarregado (${res.status}); aguardando ${wait / 1000}s`);
+      return { wait };
+    }
+    // 400: recusado só este pedido (não é da conta: o serviço continua valendo para os outros livros)
+    throw new ProviderError(`O Gemini respondeu com erro ${res.status}: ${message}`, {
+      fatal: res.status === 400,
+      code: res.status >= 500 ? "server" : "bad_request",
+    });
   }
 
   private async readStream(stream: ReadableStream<Uint8Array>): Promise<LLMResponse> {

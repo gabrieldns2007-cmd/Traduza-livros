@@ -120,7 +120,9 @@ export default async function PricesPage() {
         <h2 id="monte" className="serif text-[1.9rem] leading-tight tracking-[-0.02em] text-ink sm:text-[2.3rem]">
           Monte a sua edição
         </h2>
-        <p className="mt-2 text-[0.9375rem] leading-relaxed text-ink-2">Duas escolhas rápidas e você já vê como fica o seu livro.</p>
+        <p className="mt-2 text-[0.9375rem] leading-relaxed text-ink-2">
+          Duas escolhas rápidas e você já vê como fica o seu livro. A tradução Grátis não custa nada, em qualquer tamanho.
+        </p>
         <div className="mt-8">
           <EditionConfigurator literariaAvailable={literaria} action={action} />
         </div>
@@ -156,7 +158,9 @@ export default async function PricesPage() {
       <section className="mt-20 rounded-[1.5rem] bg-paper-2 px-6 py-10 text-center sm:px-10">
         <h2 className="serif text-[1.9rem] leading-tight tracking-[-0.02em] text-ink text-balance">Que livro você quer ler em português?</h2>
         <p className="mt-2 text-[0.9375rem] leading-relaxed text-ink-2">
-          Envie o arquivo, leia uma amostra grátis e veja o valor antes de continuar.
+          {literaria
+            ? "Envie o arquivo, leia uma amostra grátis e comece de graça — ou escolha a Literária, com o valor antes de continuar."
+            : "Envie o arquivo, leia uma amostra grátis e comece de graça, sem cartão."}
         </p>
         <div className="mt-7 flex justify-center">{closingAction}</div>
       </section>

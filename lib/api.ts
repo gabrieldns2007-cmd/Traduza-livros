@@ -15,7 +15,9 @@ export function fail(message: string, status = 400) {
 export async function loadBook(id: string): Promise<BookMeta | null> {
   if (!isValidBookId(id)) return null;
   await jobRunner.init();
-  return store.get(id);
+  const meta = await store.get(id);
+  // troca para a Literária sem pagamento com o prazo vencido: encerra já (a Grátis volta a seguir sozinha)
+  return meta ? jobRunner.checkUpgrade(meta) : null;
 }
 
 export function percentOf(meta: BookMeta): number {
@@ -64,7 +66,8 @@ export function viewOf(meta: BookMeta): BookView {
  * própria chave e escolhe o serviço, então vê tudo.
  */
 function forCustomer(meta: BookMeta): BookMeta {
-  const { runs: _runs, error: _error, ownerId: _owner, ...rest } = meta;
+  // pagamentos a reembolsar e pedidos antigos: só o painel vê
+  const { runs: _runs, error: _error, ownerId: _owner, paymentsToRefund: _refunds, orderHistory: _history, ...rest } = meta;
   return {
     ...rest,
     provider: meta.provider?.id === "demo" ? meta.provider : undefined,

@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import type { BookView } from "@/lib/api";
+import { api } from "@/lib/client";
 import { brl } from "@/lib/money";
+import { formatNumber } from "@/lib/format";
 import { whenBack } from "@/lib/quota-format";
 import { ProgressBar } from "@/components/ui/progress-bar";
 import { StageTrack } from "@/components/ui/stage-track";
 import { Button } from "@/components/ui/button";
 import { Check } from "@/components/ui/icons";
+import type { Offer } from "./order-panel";
 
 /** Etapa atual: 0 Livro · 1 Processando · 2 Traduzindo · 3 Revisando · 4 Pronto. */
 export function stageOf(book: BookView): number {
@@ -18,7 +21,20 @@ export function stageOf(book: BookView): number {
   return book.progress.translatedWords > 0 ? 2 : 1;
 }
 
+/** É a tradução Grátis (livros antigos sem tipo: pelo pedido)? */
+export function isFreeBook(book: Pick<BookView, "level" | "order">): boolean {
+  return (book.level ?? book.order?.level) === "padrao";
+}
+
+/** Quando continua: “hoje às 14:05”, “amanhã às 04:00”, “em 21/10, 04:00” — ou “em instantes”, se já passou da hora. */
+function whenText(iso: string, now: number): string {
+  if (Date.parse(iso) <= now) return "em instantes";
+  const w = whenBack(iso, now);
+  return /^(hoje|amanhã)/.test(w) ? w : `em ${w}`;
+}
+
 function headline(book: BookView, stage: number, now: number | null): { title: string; sub?: string } {
+  const free = isFreeBook(book);
   switch (book.status) {
     case "queued":
       return book.queuePosition > 0
@@ -31,15 +47,25 @@ function headline(book: BookView, stage: number, now: number | null): { title: s
         ? { title: "Revisando sua tradução.", sub: "Conferindo se todos os trechos foram traduzidos." }
         : { title: "Seu livro está sendo traduzido." };
     case "paused":
+      // Grátis à espera dos serviços gratuitos: diz quando vamos tentar de novo — nunca promete que vai dar certo
+      if (free && (book.stopCode === "waiting" || book.stopCode === "unavailable")) {
+        const when = book.stopCode === "waiting" && book.resumeAt && now !== null ? whenText(book.resumeAt, now) : null;
+        return {
+          title: "Sua tradução está aguardando.",
+          sub: `A tradução grátis está aguardando os serviços gratuitos ficarem disponíveis. ${
+            when ? `Vamos tentar de novo ${when}.` : "Vamos tentar de novo sozinhos, em breve."
+          } Todo o progresso está salvo.`,
+        };
+      }
       if (book.stopCode === "waiting")
         return {
           title: "Sua tradução está na fila.",
-          sub: `Ela continua sozinha ${book.resumeAt && now !== null ? whenBack(book.resumeAt, now) : "em breve"}. Você não precisa fazer nada.`,
+          sub: `Ela continua sozinha ${book.resumeAt && now !== null ? whenText(book.resumeAt, now) : "em breve"}. Você não precisa fazer nada.`,
         };
       if (book.stopCode === "unavailable")
         return {
           title: "Tradução pausada por um instante.",
-          sub: "Ela continua do mesmo ponto assim que possível. Tudo o que já foi traduzido está salvo.",
+          sub: "Tudo o que já foi traduzido está salvo. Toque em Continuar para seguir do mesmo ponto.",
         };
       return { title: "Tradução pausada.", sub: "Tudo o que já foi traduzido está salvo. Toque em Continuar para seguir do mesmo ponto." };
     case "error":
@@ -71,11 +97,40 @@ function useNow(): number | null {
 }
 
 /**
+ * Grátis à espera: a Literária para o que falta, se ela estiver à venda (e der
+ * para pagar). Só informa o valor — a troca passa pelo pedido, com confirmação.
+ */
+function useUpgradeOffer(book: BookView, enabled: boolean) {
+  const [offer, setOffer] = useState<{ words: number; priceBrl: number; beta: boolean } | null>(null);
+  const translated = book.progress.translatedWords;
+  useEffect(() => {
+    if (!enabled) return setOffer(null);
+    let alive = true;
+    api<{ offer: Offer }>(`/api/books/${book.id}/offer`)
+      .then(({ offer: o }) => {
+        if (!alive) return;
+        const paid = o.levels.find((l) => !l.free && l.available);
+        const canPay = o.checkout.mode === "beta" || o.checkout.payments;
+        setOffer(paid && canPay && paid.words > 0 ? { words: paid.words, priceBrl: paid.priceBrl, beta: o.checkout.mode === "beta" } : null);
+      })
+      .catch(() => alive && setOffer(null));
+    return () => {
+      alive = false;
+    };
+  }, [book.id, enabled, translated]);
+  return offer;
+}
+
+/**
  * Acompanhamento do cliente depois da compra: em que etapa está, quanto falta
  * e em que capítulo — sem nada técnico. Pode fechar a página: a tradução
  * continua no servidor e o progresso está aqui quando voltar.
+ *
+ * Grátis à espera dos serviços gratuitos: diz quando continua (se soubermos) e,
+ * se a Literária estiver à venda, oferece — sem pressa e com o mesmo peso de
+ * “Tentar agora” — traduzir o restante nela (`onUpgrade` abre o pedido).
  */
-export function OrderProgress({ book, onResume }: { book: BookView; onResume: () => Promise<void> }) {
+export function OrderProgress({ book, onResume, onUpgrade }: { book: BookView; onResume: () => Promise<void>; onUpgrade?: () => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const now = useNow();
@@ -89,6 +144,8 @@ export function OrderProgress({ book, onResume }: { book: BookView; onResume: ()
   const showChapter = stage >= 2 && total > 1;
   const order = book.order?.status === "paid" ? book.order : null;
   const eta = running && stage === 2 ? remaining(book.eta) : null;
+  const freeWaiting = book.status === "paused" && isFreeBook(book) && (book.stopCode === "waiting" || book.stopCode === "unavailable");
+  const upgrade = useUpgradeOffer(book, freeWaiting && Boolean(onUpgrade));
 
   const resume = async () => {
     setBusy(true);
@@ -107,7 +164,11 @@ export function OrderProgress({ book, onResume }: { book: BookView; onResume: ()
       {order && (
         <p className="mb-6 flex items-center gap-2 text-[0.875rem] text-ink-2">
           <Check className="h-4 w-4 text-ok" />
-          {order.payment === "beta" ? "Pedido confirmado · grátis durante o beta" : `Pagamento confirmado · ${brl(order.priceBrl)}`}
+          {order.payment === "free"
+            ? "Tradução grátis confirmada"
+            : order.payment === "beta"
+              ? "Pedido confirmado · grátis durante o beta"
+              : `Pagamento confirmado · ${brl(order.priceBrl)}`}
         </p>
       )}
 
@@ -134,13 +195,29 @@ export function OrderProgress({ book, onResume }: { book: BookView; onResume: ()
 
       {stopped ? (
         <div className="mt-6">
-          <Button onClick={resume} disabled={busy} className="w-full sm:w-auto">
-            {busy ? "Continuando…" : book.stopCode === "waiting" ? "Tentar agora" : "Continuar tradução"}
+          {/* Grátis à espera: ela segue sozinha, então “Tentar agora” não é a ação principal */}
+          <Button onClick={resume} disabled={busy} variant={freeWaiting ? "secondary" : "primary"} className="w-full sm:w-auto">
+            {busy ? "Continuando…" : book.stopCode === "waiting" || freeWaiting ? "Tentar agora" : "Continuar tradução"}
           </Button>
           {error && (
             <p className="mt-3 text-[0.875rem] text-accent" role="alert">
               {error}
             </p>
+          )}
+          {freeWaiting && upgrade && onUpgrade && (
+            <div className="mt-6 border-t border-rule pt-5">
+              <p className="text-[0.9375rem] font-medium text-ink">Prefere não esperar?</p>
+              <p className="mt-1 text-[0.875rem] leading-relaxed text-ink-2">
+                {upgrade.beta
+                  ? `A tradução Literária traduz as ${formatNumber(upgrade.words)} palavras que faltam, sem custo durante o beta.`
+                  : `A tradução Literária, paga, traduz as ${formatNumber(upgrade.words)} palavras que faltam por ${brl(upgrade.priceBrl)}.`}{" "}
+                O que já foi traduzido fica como está. Você confere tudo antes de confirmar.
+              </p>
+              {/* rótulo longo: quebra em duas linhas numa tela estreita (320 px), em vez de vazar do botão */}
+              <Button variant="secondary" onClick={onUpgrade} className="mt-4 min-h-12 w-full !h-auto py-3 text-center !whitespace-normal sm:w-auto">
+                Traduzir o restante na Literária
+              </Button>
+            </div>
           )}
         </div>
       ) : (

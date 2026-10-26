@@ -805,7 +805,7 @@ describe("GitHub Models encerrado", () => {
   const settings = { ...DEFAULT_SETTINGS, githubToken: "token-antigo" };
 
   it("um token salvo nunca manda traduções para lá", async () => {
-    expect(DEFAULT_ROUTING.padrao).toEqual(["gemini", "groq"]);
+    expect(DEFAULT_ROUTING.padrao).toEqual(["gemini", "groq", "cloudflare", "mistral"]);
     const github = providerConfigs(settings).find((p) => p.id === "github")!;
     expect(github.available).toBe(false);
     expect(github.hint).toMatch(/encerrou/);

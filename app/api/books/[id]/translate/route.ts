@@ -20,7 +20,7 @@ type Ctx = { params: Promise<{ id: string }> };
 const Body = z.object({
   action: z.enum(["preview", "start", "pause", "resume", "retry-failed"]),
   /** provedor escolhido pelo usuário (padrão: o gratuito) */
-  providerId: z.enum(["gemini", "github", "groq", "anthropic", "openai", "demo"]).optional(),
+  providerId: z.enum(["gemini", "github", "groq", "cloudflare", "mistral", "anthropic", "openai", "demo"]).optional(),
   /** confirmação explícita de que a tradução pode gerar custos */
   confirmCost: z.boolean().optional(),
   /** créditos insuficientes: traduzir só o que o saldo cobre */
@@ -114,8 +114,12 @@ export async function POST(request: Request, { params }: Ctx) {
   if (action === "pause") {
     await jobRunner.pause(id);
   } else if (action === "preview" && !parsed.data.providerId && !PUBLIC_MODE) {
-    // cliente: a amostra grátis usa a tradução Padrão, com o serviço escolhido por dentro
+    // cliente: a amostra grátis usa a tradução Grátis, com o serviço escolhido por dentro
     if (meta.status !== "ready") return fail("A amostra é feita antes de começar a tradução.", 409);
+    // livro da Literária (ou com pedido dela): o livro pago é todo traduzido pelo serviço pago, sem texto de um serviço gratuito
+    if (meta.level === "literaria" || (meta.order && meta.order.status !== "canceled" && meta.order.level === "literaria")) {
+      return fail("A amostra grátis é feita pela tradução grátis e não está disponível depois de escolher a Literária.", 409);
+    }
     const route = await routeProvider("padrao", await readSettings());
     if (!route.ok) return fail("A amostra grátis não está disponível agora. Tente de novo mais tarde.", 503);
     await applySetup(meta, parsed.data);
@@ -151,7 +155,12 @@ export async function POST(request: Request, { params }: Ctx) {
     const old = meta.preview;
     if (old) {
       await store.updateDoc(id, old.docId, (content) => {
-        for (const s of content.segments.slice(old.start, old.end)) if (!s.edited) delete s.out;
+        for (const s of content.segments.slice(old.start, old.end)) {
+          if (s.edited) continue;
+          delete s.out;
+          delete s.by;
+          delete s.warn;
+        }
       });
       await store.update(id, (m) => {
         delete m.preview;
@@ -190,6 +199,11 @@ export async function POST(request: Request, { params }: Ctx) {
     });
     await jobRunner.start(id, { partial: parsed.data.partial });
   } else if (action === "retry-failed") {
+    // com a tradução em andamento, o motor continua sozinho (e a revisão automática do fim refaz o que falhou):
+    // marcar o livro como pausado aqui deixaria o disco dizendo “pausado” com o motor rodando
+    if (jobRunner.isRunning(id) || meta.status === "queued" || meta.status === "analyzing" || meta.status === "translating") {
+      return fail("A tradução está em andamento. Os trechos que falharam são refeitos na revisão automática, no fim.", 409);
+    }
     if (PUBLIC_MODE) {
       const chosen = await chooseProvider(meta, parsed.data.providerId, parsed.data.confirmCost);
       if (chosen.error) return chosen.error;

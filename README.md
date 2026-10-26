@@ -34,13 +34,16 @@ Depois, sempre que houver novidade: `npm run atualizar` (ou menu ☰ → Termina
 
 ### Vender traduções (serviço comercial)
 
-O cliente compra **a tradução de um livro**, não “IA”: ele nunca vê qual serviço de IA traduz, tokens ou custos.
+O cliente escolhe **a tradução de um livro**, não “IA”: ele nunca vê qual serviço de IA traduz, tokens ou custos. Há duas modalidades, que nunca se misturam:
 
-**Página inicial** (botão _Traduzir meu livro_) → **Confirmar** (idioma, tipo de tradução, preço e o que está incluído) → **Pagar e traduzir** → “Pagamento confirmado.” → **Acompanhamento** (Livro → Processando → Traduzindo → Revisando → Pronto) → **Baixar** EPUB e PDF.
+- **Grátis** (R$ 0, sem cartão): o livro inteiro traduzido só por serviços de IA **gratuitos**, em rodízio automático. Não tem prazo garantido: quando os serviços gratuitos estão sem cota ou fora do ar, ela pausa e continua sozinha. Nunca usa um serviço pago. Alguns serviços gratuitos (ex.: o nível gratuito do Gemini) podem usar o texto para melhorar os produtos deles — os termos e a privacidade avisam. O Verso ganha com ela pelos **anúncios** (painel → Anúncios).
+- **Literária** (paga): R$ 1,90 + R$ 1,49 por mil palavras, mínimo R$ 9,90. Só serviços pagos (Anthropic), que não usam o texto para treinar IA. Só aparece à venda quando você liga no painel.
 
-- **Preços** (`/precos`): Padrão R$ 8,90 + R$ 0,10 por mil palavras (livro de 210 mil palavras = R$ 29,90); Literária R$ 1,90 + R$ 1,49 por mil palavras; mínimo R$ 9,90. Conta em `lib/billing/pricing.ts`; um teste impede preços abaixo da margem mínima.
+**Página inicial** (botão _Traduzir meu livro_) → **Confirmar** (idioma, tipo de tradução, preço e o que está incluído) → **Começar tradução grátis** (sem pagamento) ou, na Literária, **pagar** → **Acompanhamento** (Livro → Processando → Traduzindo → Revisando → Pronto) → **Baixar** EPUB e PDF. Se a Grátis estiver esperando os serviços gratuitos, o cliente pode, se quiser, traduzir o restante na Literária, pagando só as palavras que faltam (a troca só acontece com um pedido que ele confirma).
+
+- **Preços** (`/precos`): Grátis R$ 0 em qualquer tamanho; Literária R$ 1,90 + R$ 1,49 por mil palavras, mínimo R$ 9,90. Conta em `lib/billing/pricing.ts`; um teste impede preços da Literária abaixo da margem mínima e qualquer cobrança na Grátis.
 - **Painel** (`/admin`): no primeiro acesso, ele pede para criar a senha (guardada só como hash; ou use `ADMIN_PASSWORD`). Mostra pedidos, status do pagamento, serviço e modelo, tokens, custo estimado e real, preço, lucro e margem e erros técnicos. Ali você também escolhe a ordem dos serviços de IA, as chaves, como o cliente paga e seus dados de contato.
-- **Pagamentos:** nenhum meio de pagamento real está ligado. No painel → Vendas: **Beta** (grátis para o cliente, o padrão) ou **Teste de pagamento** (página de pagamento simulada, sem dinheiro, que só você aprova). Veja `docs/monetizacao.md`.
+- **Pagamentos** (só a Literária): nenhum meio de pagamento real está ligado. No painel → Vendas: **Beta** (a Literária sai grátis para o cliente, o padrão) ou **Teste de pagamento** (página de pagamento simulada, sem dinheiro, que só você aprova). A Grátis nunca passa por pagamento. Veja `docs/monetizacao.md`.
 - **Privacidade entre clientes:** não há contas; cada navegador recebe um identificador aleatório e só vê os livros que enviou. O painel vê todos.
 - **Termos de uso** (`/termos`) e **Política de privacidade** (`/privacidade`), com o nome e o e-mail informados no painel. Peça para um advogado revisar antes de cobrar.
 - **Anúncios (opcional, desligado de início):** no painel → Anúncios (depois de criar a senha do painel), ligue o Google AdSense ou um patrocinador direto e escolha onde aparecem (nunca no pagamento nem na leitura); o `/ads.txt` e o aviso nos termos e na privacidade são criados sozinhos. Os anúncios do Google são pedidos como não personalizados; peça para um advogado revisar os textos antes de ligar o AdSense.
@@ -183,7 +186,7 @@ Para caber no limite diário gratuito, o Verso manda trechos grandes por pedido 
 
 Cada serviço tem a própria cota diária. Quando a de um acaba, a tradução pausa e você pode continuar com outro — sempre por escolha sua; nunca há troca automática, e nunca para um serviço pago.
 
-- **GitHub Models** — encerrado pelo GitHub em 30/07/2026 e não é mais usado. Um token antigo salvo é ignorado (nunca recebe texto) e pode ser apagado em Ajustes. Se ele era a sua única chave, salve a do Gemini ou a do Groq: sem nenhuma, os clientes veem a Tradução Padrão como “Em breve”.
+- **GitHub Models** — encerrado pelo GitHub em 30/07/2026 e não é mais usado. Um token antigo salvo é ignorado (nunca recebe texto) e pode ser apagado em Ajustes. Se ele era a sua única chave, salve a de outro serviço gratuito (Gemini, Groq…): sem nenhuma, os clientes veem a Tradução Grátis como “Em breve”.
 - **Groq** — crie uma chave em [console.groq.com/keys](https://console.groq.com/keys) e cole em Ajustes (ou `GROQ_API_KEY`). Modelos Llama 3.3 70B / GPT-OSS 120B; o limite é de texto por dia.
 
 Os **créditos grátis de hoje** (Ajustes e escolha do serviço no livro) mostram quantos pedidos já foram usados em cada serviço e, quando a cota acaba, a hora em que ela volta. Os limites oficiais mudam; quando o serviço não informa o restante, o número é uma estimativa.
@@ -217,6 +220,8 @@ Como funciona por dentro:
 Para testar sem Google (só em desenvolvimento), `NEXT_PUBLIC_VERSO_TEST_LOGIN=1` mostra “Entrar como visitante (teste)” e o serviço de demonstração.
 
 ## Produto e monetização
+
+Venda por livro (servidor próprio): a tradução **Grátis** (R$ 0, só serviços de IA gratuitos, sustentada por anúncios discretos) e a **Literária** (paga, com margem garantida por teste). Na versão pública e como base interna:
 
 Créditos (1 crédito = 1.000 palavras na qualidade Padrão), planos Grátis/Plus/Pro, créditos avulsos, custo real registrado por tradução e proteção de margem. Nada é cobrado enquanto `BILLING_MODE` não for `enforce`, e não há meio de pagamento ligado. Estratégia, números e próximos passos: [docs/monetizacao.md](docs/monetizacao.md). Página pública: `/planos`.
 
