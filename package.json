@@ -31,13 +31,13 @@
     "franc-min": "^6.2.0",
     "hyphen": "^1.14.1",
     "jszip": "^3.10.2",
-    "next": "^16.4.0",
+    "next": "^16.4.6",
     "path-browserify": "^1.0.1",
     "pdfkit": "^0.20.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "unpdf": "^1.8.1",
-    "zod": "^4.6.5"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.3",

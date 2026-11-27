@@ -2,8 +2,9 @@
  * Acesso ao painel administrativo (/admin): custos, margens, serviços de IA e
  * chaves. A senha pode vir de ADMIN_PASSWORD (.env) ou ser criada no próprio
  * painel, no primeiro acesso — guardada só como hash (PBKDF2) em
- * DATA_DIR/admin.json. Sem nenhuma das duas, o painel fica aberto e pede para
- * criar a senha.
+ * DATA_DIR/admin.json. Sem nenhuma das duas, o painel fica fechado: só a tela de
+ * criar a senha (/admin/entrar) responde. Num servidor público, prefira
+ * ADMIN_PASSWORD, para ninguém criar a senha antes de você.
  */
 import path from "node:path";
 import { config } from "@/lib/config";
@@ -60,7 +61,7 @@ export async function verifyAdminPassword(candidate: string): Promise<boolean> {
   const env = process.env.ADMIN_PASSWORD;
   if (env) return sameText(await hmac("compare", candidate), await hmac("compare", env));
   const s = await stored();
-  if (!s) return true;
+  if (!s) return false; // sem senha não há o que conferir: primeiro crie a senha
   return sameText(await pbkdf2(candidate, s.salt, s.iterations), s.hash);
 }
 
@@ -70,8 +71,13 @@ export async function adminSessionToken(): Promise<string> {
   return hmac(await serverSecret(), `verso-admin:${basis}`);
 }
 
+/**
+ * O cookie é do administrador? Sem senha criada, ninguém é administrador: o painel
+ * só mostra a tela de criar a senha, e nenhum visitante vê livros alheios nem
+ * aprova pagamentos simulados.
+ */
 export async function isAdminToken(token: string | undefined): Promise<boolean> {
-  if (!(await adminProtected())) return true;
+  if (!(await adminProtected())) return false;
   return Boolean(token) && sameText(token!, await adminSessionToken());
 }
 

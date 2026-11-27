@@ -19,6 +19,7 @@ import { jobRunner, UPGRADE_HOLD_MS } from "@/services/processing/job-runner";
 import { confirmOrder, markPaid, offerFor, placeOrder } from "@/services/commerce/orders";
 import { applyPaymentEvent, paymentProvider } from "@/services/billing/payments";
 import { simulatedProvider } from "@/services/billing/providers/simulated";
+import { adminSessionToken } from "@/services/admin/access";
 import { POST as webhook } from "@/app/api/payments/webhook/[provider]/route";
 import { POST as orderPost } from "@/app/api/books/[id]/order/route";
 import { POST as confirmPost } from "@/app/api/books/[id]/order/confirm/route";
@@ -400,15 +401,17 @@ describe("compra de uma tradução", () => {
     // com senha de administrador, só o administrador aprova
     process.env.ADMIN_PASSWORD = "segredo";
     expect((await call({ s: token, result: "approved" })).status).toBe(403);
-    delete process.env.ADMIN_PASSWORD;
     // ainda não pago: a tradução não começou
     expect((await store.get(id))!.order!.status).toBe("awaiting_payment");
 
-    const ok = await call({ s: token, result: "approved" });
+    // o administrador (com a senha) aprova o pagamento de teste
+    const adminCookie = { cookie: `verso_admin=${await adminSessionToken()}` };
+    const ok = await call({ s: token, result: "approved" }, adminCookie);
     expect(ok.status).toBe(200);
     expect(((await ok.json()) as { applied: boolean }).applied).toBe(true);
     // reenvio do mesmo aviso: ignorado
-    expect(((await (await call({ s: token, result: "approved" })).json()) as { applied: boolean }).applied).toBe(false);
+    expect(((await (await call({ s: token, result: "approved" }, adminCookie)).json()) as { applied: boolean }).applied).toBe(false);
+    delete process.env.ADMIN_PASSWORD;
     const m = await until(id, ["done", "paused", "error"]);
     expect(m.status).toBe("done");
     expect(m.order!.payment).toBe("provider");

@@ -5,12 +5,16 @@ import { usePathname } from "next/navigation";
 import { Wordmark } from "./wordmark";
 import { LinkPending } from "./ui/pending";
 import { useSession } from "./public/public-shell";
+import { PUBLIC_MODE } from "@/lib/mode";
 
 const LINKS = [
   { href: "/", label: "Traduzir", short: "Traduzir", match: (p: string) => p === "/" },
   { href: "/livros", label: "Meus livros", short: "Livros", match: (p: string) => p.startsWith("/livros") },
   { href: "/precos", label: "Preços", short: "Preços", match: (p: string) => p.startsWith("/precos") },
-  { href: "/configuracoes", label: "Configurações", short: "Ajustes", match: (p: string) => p.startsWith("/configuracoes") },
+  // os ajustes da loja ficam no painel; só a versão pública (cada um com a própria chave) tem esta página
+  ...(PUBLIC_MODE
+    ? [{ href: "/configuracoes", label: "Configurações", short: "Ajustes", match: (p: string) => p.startsWith("/configuracoes") }]
+    : []),
 ];
 
 export function SiteHeader() {

@@ -95,7 +95,7 @@ describe("configuração pelo painel", () => {
     expect((await readSettings()).ads?.adsense?.slotId).toBe("9876543210");
 
     // o cliente não muda nada e nem recebe a configuração
-    expect((await customerPut(put({ ads: { enabled: false } }))).status).toBe(200);
+    expect((await customerPut(put({ ads: { enabled: false } }))).status).toBe(403);
     expect((await readSettings()).ads?.enabled).toBe(true);
     const customer = (await (await customerGet()).json()) as { settings: Record<string, unknown> };
     expect(customer.settings).not.toHaveProperty("ads");

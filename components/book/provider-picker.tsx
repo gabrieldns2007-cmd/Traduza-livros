@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { PUBLIC_MODE } from "@/lib/mode";
 import { api } from "@/lib/client";
 import { quotaText, type QuotaInfo } from "@/lib/quota-format";
 import { QuoteCard, quoteAllows, type QuoteInfo, type WalletInfo } from "./quote-card";
@@ -141,11 +142,17 @@ export function ProviderPicker({ bookId, onChange }: { bookId: string; onChange:
 
       {current && !current.available && !current.paid && (
         <p className="mt-3 text-[0.8125rem] text-ink-2">
-          Para usar o {current.label} de graça,{" "}
-          <Link href="/configuracoes" className="link text-ink">
-            adicione a chave em Ajustes
-          </Link>
-          .
+          {PUBLIC_MODE ? (
+            <>
+              Para usar o {current.label} de graça,{" "}
+              <Link href="/configuracoes" className="link text-ink">
+                adicione a chave em Ajustes
+              </Link>
+              .
+            </>
+          ) : (
+            <>O {current.label} ainda não está configurado no painel.</>
+          )}
         </p>
       )}
 

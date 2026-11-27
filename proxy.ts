@@ -31,11 +31,13 @@ export async function proxy(request: NextRequest) {
   if (pathname.startsWith("/api/payments/webhook/")) return NextResponse.next();
 
   // painel administrativo: senha própria (criada no painel ou ADMIN_PASSWORD), além da do site
+  // sem senha criada, só a criação da senha passa (a tela /admin/entrar mostra o formulário)
   const adminArea =
     (pathname === "/admin" || pathname.startsWith("/admin/") || pathname.startsWith("/api/admin/")) &&
     pathname !== "/admin/entrar" &&
-    pathname !== "/api/admin/auth";
-  if (adminArea && (await adminProtected()) && !(await isAdminToken(adminCookie))) {
+    pathname !== "/api/admin/auth" &&
+    !(pathname === "/api/admin/password" && !(await adminProtected()));
+  if (adminArea && !(await isAdminToken(adminCookie))) {
     if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Acesso restrito ao administrador." }, { status: 401 });
     const url = request.nextUrl.clone();
     url.pathname = "/admin/entrar";
@@ -56,8 +58,18 @@ export async function proxy(request: NextRequest) {
   const current = request.cookies.get(OWNER_COOKIE)?.value;
   const owner = isOwnerId(current) ? current : newOwnerId();
 
-  const book = /^\/(?:api\/books|livros)\/([^/?#]+)/.exec(pathname)?.[1];
-  if (book && !(await canSeeBook(book, owner, adminCookie))) {
+  // o ID chega como está na URL; a rota recebe o ID decodificado. Conferimos o mesmo
+  // ID que a rota vai abrir (ex.: "%61bc" vira "abc"), senão a checagem de dono seria pulada.
+  const rawBook = /^\/(?:api\/books|livros)\/([^/?#]+)/.exec(pathname)?.[1];
+  let book = rawBook;
+  if (rawBook) {
+    try {
+      book = decodeURIComponent(rawBook);
+    } catch {
+      book = undefined; // codificação inválida: tratado como livro que não é seu
+    }
+  }
+  if (rawBook && (book === undefined || !(await canSeeBook(book, owner, adminCookie)))) {
     if (pathname.startsWith("/api/")) return NextResponse.json({ error: "Livro não encontrado." }, { status: 404 });
     const url = request.nextUrl.clone();
     url.pathname = "/livros";
