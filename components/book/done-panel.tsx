@@ -24,8 +24,21 @@ export function DonePanel({ book, onChange, onRetry }: { book: BookView; onChang
   return (
     <section className="rise">
       <h2 className="serif text-[1.9rem] leading-tight tracking-[-0.02em] text-ink sm:text-[2.2rem]">
-        Seu livro está pronto<span className="text-accent">.</span>
+        {failed > 0 ? "Seu livro está quase pronto" : "Seu livro está pronto"}
+        <span className="text-accent">.</span>
       </h2>
+
+      {/* trechos sem tradução: avisar antes do download, não depois */}
+      {failed > 0 && (
+        <div className="mt-5 rounded-xl bg-accent-soft/60 px-4 py-3 text-[0.9375rem] leading-relaxed text-ink-2" role="status">
+          {failed === 1 ? "Um trecho não pôde ser traduzido" : `${failed} trechos não puderam ser traduzidos`} e {failed === 1 ? "ficou" : "ficaram"}{" "}
+          no idioma original. Você já pode baixar o livro, ou{" "}
+          <button onClick={onRetry} className="link font-medium text-ink">
+            tentar traduzir {failed === 1 ? "esse trecho" : "esses trechos"} de novo
+          </button>
+          .
+        </div>
+      )}
 
       <div className="mt-7 border-y border-rule py-6">
         {editing ? (
@@ -86,16 +99,6 @@ export function DonePanel({ book, onChange, onRetry }: { book: BookView; onChang
         <span className="serif text-[1.15rem] italic">Ler e revisar</span>
         <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
       </Link>
-
-      {failed > 0 && (
-        <div className="mt-7 rounded-xl bg-accent-soft/60 px-4 py-3 text-[0.875rem] leading-relaxed text-ink-2">
-          {failed === 1 ? "Um trecho não pôde ser traduzido" : `${failed} trechos não puderam ser traduzidos`} e {failed === 1 ? "ficou" : "ficaram"}{" "}
-          no idioma original.{" "}
-          <button onClick={onRetry} className="link font-medium text-ink">
-            Tentar novamente
-          </button>
-        </div>
-      )}
 
       <p className="mt-8 text-[0.8125rem] leading-relaxed text-muted">
         <span className="text-ink-2">Para ler no Kindle:</span> envie o EPUB pelo app Kindle no celular (Compartilhar → Kindle) ou em{" "}

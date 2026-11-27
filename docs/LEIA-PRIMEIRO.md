@@ -15,9 +15,10 @@ Nenhum livro, tradução ou capítulo foi apagado. "Devotions" continua no seu C
 | **Next.js 16.4.6 e zod 4.6.7.** | Correções de segurança publicadas (uma delas, crítica). |
 | **Mistral só é usada depois de você confirmar no painel que a conta não tem cartão.** | A API da Mistral passou a exigir cobrança ativa. Sem a confirmação, a chave salva fica parada. |
 | Texto cinza mais escuro no modo claro. | O contraste estava abaixo do mínimo de leitura (3,5:1 contra o mínimo de 4,5:1). |
+| **Limite de envios:** 10 livros por hora por navegador, 30 por rede, e no máximo 15 livros parados sem pedido. O painel não tem limite. | Antes, qualquer um podia lotar a fila e o disco enviando livros sem parar. |
 | Mensagens de erro em português ("Sem conexão com o servidor"), aviso certo para EPUB danificado ou com DRM, links do rodapé fáceis de tocar, motivos de parada legíveis no painel. | Itens da auditoria de design. |
 
-Os testes automáticos (341) passam, assim como a checagem de tipos e o build.
+Os testes automáticos (344) passam, assim como a checagem de tipos e o build.
 
 ## 2. O que só você pode fazer
 
