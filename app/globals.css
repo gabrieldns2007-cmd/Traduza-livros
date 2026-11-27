@@ -13,7 +13,7 @@
   --paper-3: #ebe6db;
   --ink: #1c1b19;
   --ink-2: #4a463f;
-  --muted: #8a847a;
+  --muted: #6e685e; /* 5,2:1 no papel e 4,9:1 no cartão (WCAG AA para texto pequeno) */
   --rule: #e4ded2;
   --rule-strong: #cfc7b8;
   --accent: #b0401c;
