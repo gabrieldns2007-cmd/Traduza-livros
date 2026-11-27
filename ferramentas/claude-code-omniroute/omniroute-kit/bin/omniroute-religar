@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Liga de novo o Claude Code ao OmniRoute depois de um omniroute-desligar.
+. "$HOME/.omniroute-kit/config.sh"
+exec node "$HOME/.omniroute-kit/claude-settings.mjs" apply "$OMNI_URL" "$COMBO_NAME" "$@"

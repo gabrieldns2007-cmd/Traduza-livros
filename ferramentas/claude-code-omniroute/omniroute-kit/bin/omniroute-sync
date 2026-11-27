@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Conecta os provedores cujos segredos existem e monta/atualiza o combo do kit.
+# Nunca duplica um provedor já conectado nem sobrescreve a chave dele.
+# Um combo com o mesmo nome criado por você (sem "(kit)" na descrição) não é tocado.
+set -u
+KIT="${OMNIROUTE_KIT:-$HOME/.omniroute-kit}"
+. "$KIT/config.sh"
+quiet=0; [ "${1:-}" = "--quiet" ] && quiet=1
+out() { if [ "$quiet" = 1 ]; then cat >/dev/null; else cat; fi; }
+"$HOME/.local/bin/omniroute-ensure" --quiet --wait || { echo "OmniRoute fora do ar" | out; exit 1; }
+API="node $KIT/omni-api.mjs $OMNI_URL"
+{
+  for pair in "${PROVIDER_SECRETS[@]}"; do $API add-provider "${pair##*:}" "${pair%%:*}"; done
+  connected="$($API providers)" || exit 1
+  echo "Conectados: $(node -e 'console.log(JSON.parse(process.argv[1]).map(c=>c.provider).join(", ")||"nenhum")' "$connected")"
+  models=()
+  for m in "${COMBO_MODELS[@]}"; do
+    if node -e 'process.exit(JSON.parse(process.argv[1]).some(c=>c.provider===process.argv[2]&&c.active)?0:1)' "$connected" "${m%%/*}"; then models+=("$m"); fi
+  done
+  csv="$(IFS=,; echo "${models[*]:-}")"
+  $API ensure-combo "$COMBO_NAME" "$csv" || echo "AVISO: sem provedor conectado; cadastre um segredo (ex.: GEMINI_API_KEY) e reinicie o Codespace."
+} 2>&1 | out

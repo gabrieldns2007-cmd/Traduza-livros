@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# Abre o Claude Code normal (com a sua conta da Anthropic), sem passar pelo OmniRoute.
+# Usa uma pasta de configuração separada; na primeira vez ele pede login.
+export CLAUDE_CONFIG_DIR="$HOME/.claude-original"
+mkdir -p "$CLAUDE_CONFIG_DIR"
+unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_API_KEY ANTHROPIC_MODEL \
+  ANTHROPIC_DEFAULT_OPUS_MODEL ANTHROPIC_DEFAULT_SONNET_MODEL ANTHROPIC_DEFAULT_HAIKU_MODEL \
+  CLAUDE_CODE_SUBAGENT_MODEL
+exec claude "$@"

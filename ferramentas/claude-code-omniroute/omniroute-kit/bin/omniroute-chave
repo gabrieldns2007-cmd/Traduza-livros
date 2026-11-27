@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# apiKeyHelper do Claude Code: imprime só a chave do OmniRoute, nada mais.
+# Também liga o OmniRoute se ele estiver parado (o Claude Code chama isto antes de pedir).
+"$HOME/.local/bin/omniroute-ensure" --quiet --wait >/dev/null 2>&1
+exec cat "$HOME/.omniroute/claude-code.key"

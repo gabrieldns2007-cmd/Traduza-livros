@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Volta o Claude Code à configuração original (restaura só o que o kit mudou).
+# Não apaga o OmniRoute, os provedores, os combos nem as chaves dele.
+#   omniroute-desligar            desfaz
+#   omniroute-desligar --dry-run  só mostra
+exec node "$HOME/.omniroute-kit/claude-settings.mjs" remove "$@"
