@@ -1,5 +1,7 @@
 # Verso.
 
+> **Dono do projeto: comece por [docs/LEIA-PRIMEIRO.md](docs/LEIA-PRIMEIRO.md)**: o que mudou, o que falta você fazer e as decisões pendentes.
+
 Traduza livros inteiros — capítulo por capítulo — preservando a estrutura, e baixe o resultado em **EPUB** (pronto para Kindle, Kobo, Apple Books) e **PDF** (com layout de livro).
 
 Feito para uso pessoal, principalmente pelo celular. Sem contas, sem banco de dados: um servidor Node e uma pasta de arquivos.
