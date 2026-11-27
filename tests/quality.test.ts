@@ -635,7 +635,7 @@ describe("análise do livro e dos capítulos", () => {
   });
 
   it("Cloudflare e Mistral (teto de 8192): lista completa de nomes, pedido dentro do teto", async () => {
-    const settings = { cloudflareAccountId: "a", cloudflareApiToken: "t", mistralApiKey: "k" };
+    const settings = { cloudflareAccountId: "a", cloudflareApiToken: "t", mistralApiKey: "k", mistralNoBilling: true };
     for (const id of ["cloudflare", "mistral"]) {
       const lim = createProvider(id, settings).limits;
       expect(lim.maxOutputTokens).toBe(8192);

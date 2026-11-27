@@ -16,6 +16,7 @@ import {
   groqApiKey,
   MISTRAL_BASE_URL,
   mistralApiKey,
+  mistralNoBillingConfirmed,
   PROVIDER_SECRET_FIELDS,
   providerConfigs,
   type FreeProviderId,
@@ -134,7 +135,8 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
     if (!secrets) {
       // cliente: nada sobre serviços, chaves, modelos ou sistema
       for (const field of PROVIDER_FIELDS) delete publicSettings[field];
-      const { routing: _r, offerLiteraria: _o, providerId: _p, checkout: _c, ads: _a, ...prefs } = publicSettings;
+      const { routing: _r, offerLiteraria: _o, providerId: _p, checkout: _c, ads: _a, mistralNoBilling: _m, ...prefs } = publicSettings;
+      void _m;
       void _r;
       void _o;
       void _p;
@@ -174,6 +176,7 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
                 },
               }
             : {}),
+          ...(id === "mistral" ? { noBilling: { confirmed: mistralNoBillingConfirmed(settings), fromEnv: process.env.MISTRAL_NO_BILLING === "1" } } : {}),
           ready: cfg.available,
           model: cfg.model,
           models: FREE_MODELS[id],
@@ -231,6 +234,7 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
     geminiModel: z.string().max(80).optional(),
     cloudflareModel: z.string().max(120).optional(),
     mistralModel: z.string().max(80).optional(),
+    mistralNoBilling: z.boolean().optional(),
     routing: z
       .object({
         padrao: z.array(z.enum(ROUTABLE)).max(8).optional(),
@@ -291,6 +295,7 @@ export function settingsRoutes({ secrets }: { secrets: boolean }) {
         next.routing = routing;
       }
       if (b.offerLiteraria !== undefined) next.offerLiteraria = b.offerLiteraria;
+      if (b.mistralNoBilling !== undefined) next.mistralNoBilling = b.mistralNoBilling;
       if (b.checkout) next.checkout = { ...current.checkout, ...b.checkout };
       if (b.business) next.business = { name: b.business.name?.trim() || undefined, email: b.business.email?.trim() || undefined };
       // anúncios: só no servidor próprio (a versão pública não tem painel nem anúncios)

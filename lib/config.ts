@@ -91,6 +91,12 @@ export interface ProviderSettings {
   cloudflareModel?: string;
   mistralApiKey?: string;
   mistralModel?: string;
+  /**
+   * O dono confirmou no painel que a conta da Mistral não tem forma de pagamento.
+   * A API da Mistral passou a exigir cobrança ativa: sem essa confirmação o Verso
+   * não usa a chave, para nenhum livro gerar cobrança.
+   */
+  mistralNoBilling?: boolean;
 }
 
 export const GEMINI_MODELS = [
@@ -157,6 +163,11 @@ export function mistralApiKey(s?: ProviderSettings): string {
 /** Endereço compatível com OpenAI do Workers AI (a conta faz parte do caminho). */
 export function cloudflareBaseUrl(accountId: string): string {
   return `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/ai/v1`;
+}
+
+/** Mistral só entra na Grátis com a confirmação de que a conta não cobra (painel ou MISTRAL_NO_BILLING=1). */
+export function mistralNoBillingConfirmed(s?: ProviderSettings): boolean {
+  return process.env.MISTRAL_NO_BILLING === "1" || s?.mistralNoBilling === true;
 }
 
 export const MISTRAL_BASE_URL = "https://api.mistral.ai/v1";
@@ -277,14 +288,16 @@ export function providerConfigs(s?: ProviderSettings): ProviderConfig[] {
     {
       id: "mistral",
       label: "Mistral (modo Free)",
-      available: Boolean(mistralApiKey(s)),
+      available: Boolean(mistralApiKey(s)) && mistralNoBillingConfirmed(s),
       model: mistralModel,
       analysisModel: mistralModel,
       paid: false,
       free: true,
       billing: "byok",
       serverOnly: true,
-      hint: "Adicione sua chave do modo Free da Mistral em Ajustes",
+      hint: mistralApiKey(s)
+        ? "Confirme no painel que a sua conta da Mistral não tem forma de pagamento"
+        : "Adicione sua chave do modo Free da Mistral em Ajustes",
     },
     {
       id: "anthropic",

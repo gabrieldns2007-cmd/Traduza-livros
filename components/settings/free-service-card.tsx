@@ -14,6 +14,8 @@ export interface FreeService {
   fromEnv: boolean;
   /** Cloudflare: o ID da conta também é necessário */
   account?: { hasValue: boolean; hint: string; fromEnv: boolean };
+  /** Mistral: o dono confirmou que a conta não tem forma de pagamento (sem isso ela não é usada) */
+  noBilling?: { confirmed: boolean; fromEnv: boolean };
   /** chave (e conta) completas: o serviço pode traduzir */
   ready?: boolean;
   model: string;
@@ -64,7 +66,7 @@ const HOW_TO: Partial<Record<FreeService["id"], { url: string; site: string; ste
     url: "https://console.mistral.ai/api-keys",
     site: "console.mistral.ai/api-keys",
     steps:
-      "Crie uma conta (o modo Free não pede cartão) e gere uma chave. Depois, em Admin → Privacy, desligue “Anonymous improvement data” para a Mistral não treinar com os livros.",
+      "Atenção: a API da Mistral hoje só funciona com cobrança ativada. Só use se a sua conta não tiver cartão nem forma de pagamento; o Verso só usa a chave depois que você confirmar isso aqui. Em Admin → Privacy, desligue “Anonymous improvement data” para a Mistral não treinar com os livros.",
   },
 };
 
@@ -143,7 +145,8 @@ function ActiveServiceCard({ service, onChange, endpoint = "/api/settings" }: Ca
   const dataNote = service.dataPolicy?.note ?? DATA_NOTE[service.id];
   const blocked = service.health?.blockedUntil;
 
-  const put = async (body: Record<string, string>) => {
+  const needsNoBilling = Boolean(service.noBilling && !service.noBilling.confirmed);
+  const put = async (body: Record<string, string | boolean>) => {
     const d = await api<unknown>(endpoint, { method: "PUT", json: body });
     onChange(d);
   };
@@ -176,7 +179,13 @@ function ActiveServiceCard({ service, onChange, endpoint = "/api/settings" }: Ca
       <div className="flex items-baseline justify-between gap-3">
         <h3 className="text-[1rem] font-medium text-ink">{service.label}</h3>
         <span className={`shrink-0 text-[0.75rem] ${ready ? "text-ok" : "text-muted"}`}>
-          {ready ? "Pronto" : service.hasKey && accountMissing ? "Falta o ID da conta" : "Sem chave"}
+          {ready
+            ? "Pronto"
+            : service.hasKey && accountMissing
+              ? "Falta o ID da conta"
+              : service.hasKey && needsNoBilling
+                ? "Falta confirmar"
+                : "Sem chave"}
         </span>
       </div>
 
@@ -217,6 +226,20 @@ function ActiveServiceCard({ service, onChange, endpoint = "/api/settings" }: Ca
             . {how.steps}
           </p>
         )
+      )}
+      {service.hasKey && service.noBilling && !service.noBilling.fromEnv && (
+        <label className="mt-3 flex min-h-11 items-start gap-3 rounded-xl bg-paper-2 px-4 py-3 text-[0.875rem] leading-relaxed text-ink-2">
+          <input
+            type="checkbox"
+            className="mt-1 h-4 w-4 shrink-0"
+            checked={service.noBilling.confirmed}
+            onChange={(e) => put({ mistralNoBilling: e.target.checked }).catch(() => {})}
+          />
+          <span>
+            Confirmo que a minha conta da Mistral <strong className="font-medium text-ink">não tem cartão nem forma de pagamento</strong>. Sem
+            esta confirmação, o Verso não usa a Mistral, para nenhum livro gerar cobrança.
+          </span>
+        </label>
       )}
       {service.limitsNote && <p className="mt-1.5 text-[0.8125rem] leading-relaxed text-muted">{service.limitsNote}</p>}
       {dataNote && (

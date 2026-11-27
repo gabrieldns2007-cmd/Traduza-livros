@@ -82,6 +82,8 @@ const KEYS: ProviderSettings = {
   cloudflareAccountId: "conta123",
   cloudflareApiToken: "token-cf",
   mistralApiKey: "chave-mistral",
+  // o dono confirmou no painel que a conta da Mistral não tem forma de pagamento
+  mistralNoBilling: true,
 };
 const WITH_KEYS: Settings = { ...DEFAULT_SETTINGS, ...KEYS };
 const model = (id: string, s: ProviderSettings = WITH_KEYS) => providerConfigs(s).find((p) => p.id === id)!.model;
@@ -834,8 +836,29 @@ describe("Cloudflare Workers AI", () => {
   });
 });
 
+describe("Mistral sem confirmação de conta sem cobrança", () => {
+  it("com a chave mas sem a confirmação, a Mistral nunca é usada; o painel confirma e ela entra", async () => {
+    const noConfirm: Settings = { ...WITH_KEYS, mistralNoBilling: undefined, routing: { padrao: ["mistral"] } };
+    expect(providerConfigs(noConfirm).find((p) => p.id === "mistral")!.available).toBe(false);
+    const r = await routeProvider("padrao", noConfirm);
+    expect(r.ok).toBe(false);
+    expect(levelOffered("padrao", noConfirm)).toBe(false);
+    expect((await routeProvider("padrao", { ...noConfirm, mistralNoBilling: true })).ok).toBe(true);
+
+    await writeSettings({ ...DEFAULT_SETTINGS, mistralApiKey: "chave-mistral" });
+    const before = (await (await adminGet()).json()) as { free: { id: string; ready: boolean; noBilling?: { confirmed: boolean } }[] };
+    const card = before.free.find((f) => f.id === "mistral")!;
+    expect(card.ready).toBe(false);
+    expect(card.noBilling).toEqual({ confirmed: false, fromEnv: false });
+    expect((await adminPut(put({ mistralNoBilling: true }))).status).toBe(200);
+    expect((await readSettings()).mistralNoBilling).toBe(true);
+    const after = (await (await adminGet()).json()) as { free: { id: string; ready: boolean }[] };
+    expect(after.free.find((f) => f.id === "mistral")!.ready).toBe(true);
+  });
+});
+
 describe("Mistral (modo Free)", () => {
-  const settings = { ...DEFAULT_SETTINGS, mistralApiKey: "chave-mistral" };
+  const settings = { ...DEFAULT_SETTINGS, mistralApiKey: "chave-mistral", mistralNoBilling: true };
 
   it("402: a cota do mês acabou — para até o dia 1º", async () => {
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ message: "Payment required" }), { status: 402 }));
@@ -1079,7 +1102,7 @@ describe("pedido recusado (400) não é falha da conta", () => {
 describe("esperas e retomadas", () => {
   it("serviço com a conta recusada (6 h) e outro sem cota até o mês que vem: volta na hora do primeiro; chave nova acorda o livro", async () => {
     await isolatedData();
-    await writeSettings({ ...DEFAULT_SETTINGS, geminiApiKey: "g", mistralApiKey: "m" });
+    await writeSettings({ ...DEFAULT_SETTINGS, geminiApiKey: "g", mistralApiKey: "m", mistralNoBilling: true });
     const mistral = new Fake("mistral", model("mistral"), { code: "quota", fatal: true, retryAt: nextMonthUtc() });
     jobRunner.providerFactory = factory({ gemini: new Fake("gemini", model("gemini"), { code: "auth", fatal: true }), mistral });
     const id = await freeBook(1);
@@ -1101,7 +1124,7 @@ describe("esperas e retomadas", () => {
   });
 
   it("Retry-After longo (Mistral, 1 h): nenhuma nova tentativa agora, e o serviço descansa até a hora pedida", async () => {
-    await writeSettings({ ...DEFAULT_SETTINGS, mistralApiKey: "m" });
+    await writeSettings({ ...DEFAULT_SETTINGS, mistralApiKey: "m", mistralNoBilling: true });
     let calls = 0;
     vi.stubGlobal("fetch", async () => {
       calls++;
@@ -1117,7 +1140,7 @@ describe("esperas e retomadas", () => {
     const m = await until(id, ["paused", "error", "done"]);
     dropTimer(id);
     expect(calls).toBe(1);
-    const back = (await blockedUntil("mistral", model("mistral", { mistralApiKey: "m" })))!;
+    const back = (await blockedUntil("mistral", model("mistral", { mistralApiKey: "m", mistralNoBilling: true })))!;
     expect(back - t0).toBeGreaterThan(59 * 60_000);
     expect(back - t0).toBeLessThan(61 * 60_000);
     expect(Math.abs(Date.parse(m.resumeAt!) - back)).toBeLessThan(5_000);
