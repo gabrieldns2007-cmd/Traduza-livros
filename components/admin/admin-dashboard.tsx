@@ -141,6 +141,10 @@ const STOP: Record<string, string> = {
   credits: "sem créditos",
   wallet: "carteira vazia",
   margin: "margem abaixo do mínimo",
+  paused: "pausado por você",
+  restart: "o servidor reiniciou; continua sozinho",
+  free: "esperando um serviço gratuito",
+  other: "parou por um erro (veja o registro)",
 };
 
 // o id "padrao" é a tradução Grátis (mantido para os livros e pedidos já gravados)
@@ -360,8 +364,8 @@ function Books({ rows }: { rows: Row[] }) {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[1rem] text-ink">{r.title}</span>
                   <span className="mt-0.5 block text-[0.8125rem] text-muted">
-                    {STATUS[r.status] ?? r.status}
-                    {r.status !== "ready" && r.status !== "done" ? ` · ${r.percent}%` : ""}
+                    {r.status === "ready" && r.order?.status === "awaiting_payment" ? "Aguardando pagamento" : (STATUS[r.status] ?? r.status)}
+                    {r.status !== "ready" && r.status !== "done" ? ` · ${Math.round(r.percent)}%` : ""}
                     {r.stopCode ? ` · ${STOP[r.stopCode] ?? r.stopCode}` : ""}
                     {r.resumeAt ? ` · volta ${when(r.resumeAt)}` : ""}
                     {r.toRefund?.length ? " · pagamento para reembolsar" : ""}
