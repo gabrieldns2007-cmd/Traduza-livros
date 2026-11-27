@@ -27,7 +27,8 @@ Os testes automáticos (345) passam, assim como a checagem de tipos e o build.
    - Se **não** houver, marque no painel do Verso → Mistral → "Confirmo que a minha conta… não tem cartão".
    - Se houver, deixe desmarcado ou remova a chave.
 2. **Chave do Google:** a chave do Gemini que apareceu numa conversa antiga deve ser trocada. No aistudio.google.com/apikey, apague a antiga e cole a nova no painel.
-3. **Teste de tradução grátis:** envie um livro curto pelo site e acompanhe se ele termina.
+3. **Nome e e-mail da loja:** preencha no painel → Vendas. A Política de privacidade e os Termos passam a mostrar esse e-mail como contato. Hoje aparece "o e-mail de contato indicado no site", sem e-mail nenhum.
+4. **Teste de tradução grátis:** envie um livro curto pelo site e acompanhe se ele termina.
 
 ## 3. Decisões que estão esperando você
 
