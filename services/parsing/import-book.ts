@@ -29,7 +29,12 @@ export interface ImportOptions {
 
 export async function importBook(bytes: Uint8Array, opts: ImportOptions): Promise<BookMeta> {
   const format = detectFormat(bytes);
-  if (!format) throw new ImportError("Formato não reconhecido. Envie um arquivo .epub ou .pdf.");
+  if (!format) {
+    // o nome diz .epub/.pdf mas o conteúdo não é: arquivo danificado, incompleto ou protegido
+    if (/\.(epub|pdf)$/i.test(opts.fileName ?? ""))
+      throw new ImportError("Não conseguimos abrir este arquivo. Ele pode estar danificado, incompleto ou protegido por DRM. Tente baixá-lo de novo.");
+    throw new ImportError("Formato não reconhecido. Envie um arquivo .epub ou .pdf.");
+  }
 
   const id = store.newId();
   try {
