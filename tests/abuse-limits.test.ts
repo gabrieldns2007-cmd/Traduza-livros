@@ -33,7 +33,7 @@ describe("limites de envio", () => {
     process.env.UPLOAD_LIMIT_PER_HOUR = "1";
     const send = async () => {
       const form = new FormData();
-      form.set("file", new File([await fixtureEpub()], "livro.epub", { type: "application/epub+zip" }));
+      form.set("file", new File([new Uint8Array(await fixtureEpub())], "livro.epub", { type: "application/epub+zip" }));
       return upload(new Request("http://x/api/books", { method: "POST", body: form, headers: { cookie: `verso_owner=${"e".repeat(24)}`, "x-forwarded-for": "9.9.9.9" } }));
     };
     expect((await send()).status).toBe(201);
