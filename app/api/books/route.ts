@@ -7,6 +7,8 @@ import { jobRunner } from "@/services/processing/job-runner";
 import { cookieOf, isOwnerId, OWNER_COOKIE, visibleTo } from "@/services/commerce/ownership";
 import { ADMIN_COOKIE } from "@/lib/auth";
 import { PUBLIC_MODE } from "@/lib/mode";
+import { checkUpload, clientIp, recordUpload } from "@/services/abuse/limits";
+import { isAdminToken } from "@/services/admin/access";
 
 export async function GET(request: Request) {
   await jobRunner.init();
@@ -36,6 +38,16 @@ export async function POST(request: Request) {
   }
   if (!/\.(epub|pdf)$/i.test(file.name)) return fail("Envie um arquivo .epub ou .pdf.");
 
+  // freio contra abuso (o painel não tem limite): envios por hora e livros parados sem pedido
+  const owner = cookieOf(request, OWNER_COOKIE);
+  const ip = clientIp(request);
+  const limited = !PUBLIC_MODE && !(await isAdminToken(cookieOf(request, ADMIN_COOKIE)));
+  if (limited) {
+    const pending = isOwnerId(owner) ? (await store.list()).filter((b) => b.ownerId === owner && !b.order).length : 0;
+    const problem = checkUpload(isOwnerId(owner) ? owner : undefined, ip, pending);
+    if (problem) return fail(problem, 429);
+  }
+
   const settings = await readSettings();
   const target = findLanguage(String(form.get("targetLanguage") ?? ""))?.code ?? settings.targetLanguage;
   const sourceRaw = String(form.get("sourceLanguage") ?? "");
@@ -44,7 +56,7 @@ export async function POST(request: Request) {
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const meta = await importBook(bytes, { fileName: file.name.slice(0, 200), targetLanguage: target, sourceLanguage: source });
-    const owner = cookieOf(request, OWNER_COOKIE);
+    if (limited) recordUpload(isOwnerId(owner) ? owner : undefined, ip);
     await store.update(meta.id, (m) => {
       m.options = { dialogueStyle: settings.dialogueStyle, deepContext: settings.deepContext, instructions: settings.instructions || undefined };
       // o livro fica ligado a este navegador (o cookie vem do proxy)
