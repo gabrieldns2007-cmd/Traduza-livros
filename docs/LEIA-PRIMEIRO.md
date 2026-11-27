@@ -16,9 +16,10 @@ Nenhum livro, tradução ou capítulo foi apagado. "Devotions" continua no seu C
 | **Mistral só é usada depois de você confirmar no painel que a conta não tem cartão.** | A API da Mistral passou a exigir cobrança ativa. Sem a confirmação, a chave salva fica parada. |
 | Texto cinza mais escuro no modo claro. | O contraste estava abaixo do mínimo de leitura (3,5:1 contra o mínimo de 4,5:1). |
 | **Limite de envios:** 10 livros por hora por navegador, 30 por rede, e no máximo 15 livros parados sem pedido. O painel não tem limite. | Antes, qualquer um podia lotar a fila e o disco enviando livros sem parar. |
+| Livro com trechos sem tradução aparece como "quase pronto", com o aviso antes dos botões de baixar. Perguntas frequentes sem a Literária enquanto ela não estiver oferecida. | Antes, dizia "pronto" e o aviso ficava escondido embaixo; o FAQ falava de um serviço que não existe ainda. |
 | Mensagens de erro em português ("Sem conexão com o servidor"), aviso certo para EPUB danificado ou com DRM, links do rodapé fáceis de tocar, motivos de parada legíveis no painel. | Itens da auditoria de design. |
 
-Os testes automáticos (344) passam, assim como a checagem de tipos e o build.
+Os testes automáticos (345) passam, assim como a checagem de tipos e o build.
 
 ## 2. O que só você pode fazer
 
@@ -73,3 +74,12 @@ O kit está em [`ferramentas/claude-code-omniroute/`](../ferramentas/claude-code
 | OpenRouter grátis | Evitar | Reserva |
 
 Revendas, logins de assinatura (Claude Pro, ChatGPT, Gemini CLI) e os 16 provedores que o próprio OmniRoute marca como "evitar" ficaram de fora: os termos proíbem ou não são seguros.
+
+## 5. Ainda da auditoria (não feito)
+
+- Painel do dono no celular: dividir em abas e ter um único botão de salvar (hoje é uma página muito longa).
+- Uma lista única de palavras para os estados do livro ("Na fila", "Aguardando", "Pronto"…) e um único indicador de etapas.
+- E-mail de contato e nome da empresa no rodapé e na Política de privacidade. Imagem de prévia para links compartilhados no WhatsApp.
+- Exportação em PDF de livros grandes usa muita memória (cerca de 2,2 GB num teste).
+- Uma fila só para todos os clientes: um livro grande na Grátis atrasa os outros.
+- Remover o modo público e os créditos antigos (depende da sua decisão no item 3).
