@@ -3,7 +3,7 @@ import { OPERATIONS, priceFor, priceLabel, SERVICE_LEVELS } from "@/lib/billing/
 import { brl } from "@/lib/money";
 import { ArrowRight, Check } from "@/components/ui/icons";
 import { ButtonLink } from "@/components/ui/button";
-import { Faq } from "@/components/commerce/faq";
+import { Faq, faqFor } from "@/components/commerce/faq";
 import { AdSlot } from "@/components/ads/ad-slot";
 import type { AdConfig } from "@/lib/ads";
 import { UploadCta } from "./upload-cta";
@@ -210,7 +210,7 @@ export function Landing({
 
       <Section title="Perguntas frequentes">
         <div className="mt-5">
-          <Faq />
+          <Faq items={faqFor(literaria)} />
         </div>
       </Section>
 

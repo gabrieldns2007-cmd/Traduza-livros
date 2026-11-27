@@ -1,4 +1,4 @@
-/** Mensagens de envio que o cliente entende: arquivo danificado não é "formato errado". */
+/** Mensagens para o cliente: erros que ele entende e perguntas que combinam com o que está à venda. */
 import { describe, expect, it } from "vitest";
 import { importBook } from "@/services/parsing/import-book";
 
@@ -12,5 +12,16 @@ describe("arquivo que não abre", () => {
   });
   it("outro tipo de arquivo: pede .epub ou .pdf", async () => {
     await expect(importBook(junk, { fileName: "livro.docx", targetLanguage: "pt-BR" })).rejects.toThrow(/Envie um arquivo \.epub ou \.pdf/);
+  });
+});
+
+import { FAQ, faqFor } from "@/components/commerce/faq";
+
+describe("perguntas frequentes", () => {
+  it("sem a Literária oferecida, nenhuma pergunta ou resposta fala dela", () => {
+    const off = faqFor(false);
+    expect(off.length).toBeLessThan(FAQ.length);
+    for (const [q, a] of off) expect(`${q} ${a}`).not.toMatch(/Literária/);
+    expect(faqFor(true)).toBe(FAQ);
   });
 });

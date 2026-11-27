@@ -56,6 +56,22 @@ export const FAQ: [string, string][] = [
   ],
 ];
 
+/** Respostas sem a Literária, para quando ela não está oferecida. */
+const WITHOUT_LITERARIA: Record<string, string> = {
+  "Preciso assinar alguma coisa?": "Não. A tradução Grátis não cobra nada, não pede cartão e não tem assinatura.",
+  "Quanto tempo demora?":
+    "Não há prazo garantido: a tradução Grátis avança conforme os serviços gratuitos ficam disponíveis e pode levar bem mais tempo em livros longos. Você pode fechar a página: a tradução continua e você acompanha quando voltar.",
+};
+
+/**
+ * As perguntas certas para o que está à venda agora: sem a Literária oferecida,
+ * as perguntas sobre ela saem e as respostas falam só da Grátis.
+ */
+export function faqFor(literaria: boolean): [string, string][] {
+  if (literaria) return FAQ;
+  return FAQ.filter(([q]) => !q.includes("Literária")).map(([q, a]) => [q, WITHOUT_LITERARIA[q] ?? a]);
+}
+
 const PRIVACY = "Política de privacidade";
 
 /** Transforma a menção à Política de privacidade num link de texto. */

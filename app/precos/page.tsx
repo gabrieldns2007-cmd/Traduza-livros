@@ -6,7 +6,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { ArrowRight, Check } from "@/components/ui/icons";
 import { EditionConfigurator } from "@/components/commerce/edition-configurator";
 import { UploadCta } from "@/components/home/upload-cta";
-import { Faq } from "@/components/commerce/faq";
+import { Faq, faqFor } from "@/components/commerce/faq";
 import { AdSlot } from "@/components/ads/ad-slot";
 import type { AdConfig } from "@/lib/ads";
 
@@ -150,7 +150,7 @@ export default async function PricesPage() {
       <section className="mt-20 max-w-[40rem] sm:mt-24">
         <h2 className="serif text-[1.9rem] leading-tight tracking-[-0.02em] text-ink sm:text-[2.3rem]">Perguntas</h2>
         <div className="mt-5">
-          <Faq />
+          <Faq items={faqFor(literaria)} />
         </div>
       </section>
 
